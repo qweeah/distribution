@@ -25,6 +25,10 @@ type proxyManifestStore struct {
 
 var _ distribution.ManifestService = &proxyManifestStore{}
 
+func (pms proxyManifestStore) Referrers(_ context.Context, _ digest.Digest, _ string) ([]distribution.ArtifactDescriptor, error) {
+	return nil, distribution.ErrUnsupported
+}
+
 func (pms proxyManifestStore) Exists(ctx context.Context, dgst digest.Digest) (bool, error) {
 	exists, err := pms.localManifests.Exists(ctx, dgst)
 	if err != nil {
