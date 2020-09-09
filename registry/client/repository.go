@@ -397,6 +397,10 @@ type manifests struct {
 	etags  map[string]string
 }
 
+func (ms *manifests) Referrers(_ context.Context, _ digest.Digest, _ string) ([]distribution.ArtifactDescriptor, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 func (ms *manifests) Exists(ctx context.Context, dgst digest.Digest) (bool, error) {
 	ref, err := reference.WithDigest(ms.name, dgst)
 	if err != nil {

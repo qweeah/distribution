@@ -2,6 +2,8 @@ module github.com/distribution/distribution/v3
 
 go 1.15
 
+replace github.com/oras-project/artifacts-spec => github.com/aviral26/artifacts-spec v0.0.2
+
 require (
 	github.com/Azure/azure-sdk-for-go v16.2.1+incompatible
 	github.com/Azure/go-autorest v10.8.1+incompatible // indirect
@@ -30,6 +32,7 @@ require (
 	github.com/ncw/swift v1.0.47
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.1
+	github.com/oras-project/artifacts-spec v0.0.0-00010101000000-000000000000
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v0.0.3

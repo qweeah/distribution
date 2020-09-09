@@ -61,6 +61,11 @@ func (sm statsManifest) Put(ctx context.Context, manifest distribution.Manifest,
 	return sm.manifests.Put(ctx, manifest)
 }
 
+func (sm statsManifest) Referrers(ctx context.Context, dgst digest.Digest, referrerType string) ([]distribution.ArtifactDescriptor, error) {
+	sm.stats["referrers"]++
+	return sm.Referrers(ctx, dgst, referrerType)
+}
+
 type mockChallenger struct {
 	sync.Mutex
 	count int
