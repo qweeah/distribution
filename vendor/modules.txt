@@ -139,7 +139,7 @@ github.com/opencontainers/go-digest
 ## explicit
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
-# github.com/oras-project/artifacts-spec v0.0.0-20210826181006-68f2cefa34a6
+# github.com/oras-project/artifacts-spec v0.0.0-20210830204616-bd9edb3a9b43
 ## explicit
 github.com/oras-project/artifacts-spec/specs-go/v1
 # github.com/prometheus/client_golang v1.1.0
