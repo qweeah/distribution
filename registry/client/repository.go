@@ -21,6 +21,7 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/cache"
 	"github.com/distribution/distribution/v3/registry/storage/cache/memory"
 	"github.com/opencontainers/go-digest"
+	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 // Registry provides an interface for calling Repositories, which returns a catalog of repositories.
@@ -397,7 +398,7 @@ type manifests struct {
 	etags  map[string]string
 }
 
-func (ms *manifests) Referrers(_ context.Context, _ digest.Digest, _ string) ([]distribution.ArtifactDescriptor, error) {
+func (ms *manifests) Referrers(_ context.Context, _ digest.Digest, _ string) ([]orasartifacts.Descriptor, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
