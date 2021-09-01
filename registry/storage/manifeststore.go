@@ -162,10 +162,10 @@ func (ms *manifestStore) Put(ctx context.Context, manifest distribution.Manifest
 }
 
 // Referrers returns referrer manifests filtered by the given referrerType.
-func (ms *manifestStore) Referrers(ctx context.Context, revision digest.Digest, referrerType string) ([]distribution.ArtifactDescriptor, error) {
+func (ms *manifestStore) Referrers(ctx context.Context, revision digest.Digest, referrerType string) ([]orasartifactv1.Descriptor, error) {
 	dcontext.GetLogger(ms.ctx).Debug("(*manifestStore).Referrers")
 
-	var referrers []distribution.ArtifactDescriptor
+	var referrers []orasartifactv1.Descriptor
 
 	err := ms.referrersStore(ctx, revision, referrerType).Enumerate(ctx, func(referrerRevision digest.Digest) error {
 		man, err := ms.Get(ctx, referrerRevision)
@@ -184,10 +184,10 @@ func (ms *manifestStore) Referrers(ctx context.Context, revision digest.Digest, 
 			return err
 		}
 		desc.MediaType, _, _ = man.Payload()
-		referrers = append(referrers, distribution.ArtifactDescriptor{
+		referrers = append(referrers, orasartifactv1.Descriptor{
 			MediaType:    desc.MediaType,
 			Size:         desc.Size,
-			Digest:       desc.Digest.String(),
+			Digest:       desc.Digest,
 			ArtifactType: orasArtifactMan.ArtifactType(),
 		})
 		return nil

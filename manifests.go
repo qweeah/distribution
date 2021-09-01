@@ -6,6 +6,7 @@ import (
 	"mime"
 
 	"github.com/opencontainers/go-digest"
+	orasartifact "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 // Manifest represents a registry object specifying a set of
@@ -47,23 +48,6 @@ type ManifestBuilder interface {
 	AppendReference(dependency Describable) error
 }
 
-// ArtifactDescriptor describes targeted reference type content.
-type ArtifactDescriptor struct {
-	// MediaType describe the type of the content. All text based formats are
-	// encoded as utf-8.
-	MediaType string `json:"mediaType,omitempty"`
-
-	// Size in bytes of content.
-	Size int64 `json:"size,omitempty"`
-
-	// Digest uniquely identifies the content. A byte stream can be verified
-	// against this digest.
-	Digest string `json:"digest,omitempty"`
-
-	// ArtifactType specifies the artifact type of the content.
-	ArtifactType string `json:"artifactType,omitempty"`
-}
-
 // ManifestService describes operations on image manifests.
 type ManifestService interface {
 	// Exists returns true if the manifest exists.
@@ -81,7 +65,7 @@ type ManifestService interface {
 
 	// Referrers returns a collection of manifests which reference the given manifest,
 	// filtered by artifactType.
-	Referrers(ctx context.Context, dgst digest.Digest, artifactType string) ([]ArtifactDescriptor, error)
+	Referrers(ctx context.Context, dgst digest.Digest, artifactType string) ([]orasartifact.Descriptor, error)
 }
 
 // ManifestEnumerator enables iterating over manifests

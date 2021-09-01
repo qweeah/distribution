@@ -19,6 +19,7 @@ import (
 	"github.com/distribution/distribution/v3/testutil"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 type statsManifest struct {
@@ -61,7 +62,7 @@ func (sm statsManifest) Put(ctx context.Context, manifest distribution.Manifest,
 	return sm.manifests.Put(ctx, manifest)
 }
 
-func (sm statsManifest) Referrers(ctx context.Context, dgst digest.Digest, referrerType string) ([]distribution.ArtifactDescriptor, error) {
+func (sm statsManifest) Referrers(ctx context.Context, dgst digest.Digest, referrerType string) ([]orasartifacts.Descriptor, error) {
 	sm.stats["referrers"]++
 	return sm.Referrers(ctx, dgst, referrerType)
 }

@@ -5,11 +5,12 @@ import (
 	"net/http"
 
 	"github.com/distribution/distribution/v3"
+	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
-	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/gorilla/handlers"
 	"github.com/opencontainers/go-digest"
+	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 // referrersDispatcher takes the request context and builds the
@@ -29,7 +30,7 @@ func referrersDispatcher(ctx *Context, r *http.Request) http.Handler {
 
 // referrersResponse describes the response body of the referrers API.
 type referrersResponse struct {
-	Referrers []distribution.ArtifactDescriptor `json:"references"`
+	Referrers []orasartifacts.Descriptor `json:"references"`
 }
 
 // referrersHandler handles http operations on manifest referrers.
@@ -70,7 +71,7 @@ func (h *referrersHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if referrers == nil {
-		referrers = []distribution.ArtifactDescriptor{}
+		referrers = []orasartifacts.Descriptor{}
 	}
 
 	response := referrersResponse{}
