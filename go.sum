@@ -96,10 +96,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.0.1 h1:JMemWkRwHx4Zj+fVxWoMCFm/8sYGGrUVojFA6h/TRcI=
 github.com/opencontainers/image-spec v1.0.1/go.mod h1:BtxoFyWECRxE4U/7sNtV5W15zMzWCbyJoFRP3s7yZA0=
-github.com/oras-project/artifacts-spec v0.0.0-20210820222200-769b88c06428 h1:amnau8Czf7c+KCq14179DmXq9tLt0b/tGg+xusz2L2Q=
-github.com/oras-project/artifacts-spec v0.0.0-20210820222200-769b88c06428/go.mod h1:Xch2aLzSwtkhbFFN6LUzTfLtukYvMMdXJ4oZ8O7BOdc=
-github.com/oras-project/artifacts-spec v0.0.0-20210826181006-68f2cefa34a6 h1:BZYj7fsb3kZb2INlysMzTeLZ1ksxwwn4BreryzyI2KM=
-github.com/oras-project/artifacts-spec v0.0.0-20210826181006-68f2cefa34a6/go.mod h1:Xch2aLzSwtkhbFFN6LUzTfLtukYvMMdXJ4oZ8O7BOdc=
+github.com/oras-project/artifacts-spec v0.0.0-20210910233110-813953a626ae h1:vw1ccIckPxFFx3/wW8SaVLtvQ5viAduN+fuku8KbEfo=
+github.com/oras-project/artifacts-spec v0.0.0-20210910233110-813953a626ae/go.mod h1:Xch2aLzSwtkhbFFN6LUzTfLtukYvMMdXJ4oZ8O7BOdc=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

@@ -104,7 +104,7 @@ cat <<EOF > $artifactFile
       "size": $signatureFileSize
     }
   ],
-  "subjectManifest": {
+  "subject": {
       "mediaType": "$manifestMediaType",
       "digest": "$manifestDigest",
       "size": $manifestFileSize

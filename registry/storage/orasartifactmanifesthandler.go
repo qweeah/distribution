@@ -94,7 +94,7 @@ func (oamh *orasArtifactManifestHandler) verifyManifest(ctx context.Context, dm 
 		}
 
 		// Validate subject manifest.
-		subject := dm.SubjectManifest()
+		subject := dm.Subject()
 		exists, err := ms.Exists(ctx, subject.Digest)
 		if !exists || err == distribution.ErrBlobUnknown {
 			errs = append(errs, distribution.ErrManifestBlobUnknown{Digest: subject.Digest})
@@ -113,7 +113,7 @@ func (oamh *orasArtifactManifestHandler) verifyManifest(ctx context.Context, dm 
 // indexReferrers indexes the subject of the given revision in its referrers index store.
 func (oamh *orasArtifactManifestHandler) indexReferrers(ctx context.Context, dm orasartifact.DeserializedManifest, revision digest.Digest) error {
 	artifactType := dm.ArtifactType()
-	subject := dm.SubjectManifest()
+	subject := dm.Subject()
 
 	if err := oamh.referrersStore(ctx, subject.Digest, artifactType).linkBlob(ctx, distribution.Descriptor{Digest: revision}); err != nil {
 		return err
