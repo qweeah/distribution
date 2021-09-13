@@ -133,13 +133,9 @@ func (ms *manifestStore) Get(ctx context.Context, dgst digest.Digest, options ..
 			return nil, distribution.ErrManifestVerification{fmt.Errorf("unrecognized manifest content type %s", versioned.MediaType)}
 		}
 	default:
-		switch versioned.MediaType {
-		case orasartifactv1.MediaTypeArtifactManifest:
-			return ms.orasArtifactHandler.Unmarshal(ctx, dgst, content)
-		}
+		// Assume it's an ORAS artifact manifest.
+		return ms.orasArtifactHandler.Unmarshal(ctx, dgst, content)
 	}
-
-	return nil, fmt.Errorf("unrecognized manifest schema version %d", versioned.SchemaVersion)
 }
 
 func (ms *manifestStore) Put(ctx context.Context, manifest distribution.Manifest, options ...distribution.ManifestServiceOption) (digest.Digest, error) {

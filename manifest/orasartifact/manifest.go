@@ -18,13 +18,6 @@ func init() {
 			return nil, distribution.Descriptor{}, err
 		}
 
-		if d.inner.MediaType != v1.MediaTypeArtifactManifest {
-			err = fmt.Errorf("if present, mediaType in ORAS artifact manifest should be '%s' not '%s'",
-				v1.MediaTypeArtifactManifest, d.inner.MediaType)
-
-			return nil, distribution.Descriptor{}, err
-		}
-
 		dgst := digest.FromBytes(b)
 		return d, distribution.Descriptor{Digest: dgst, Size: int64(len(b)), MediaType: v1.MediaTypeArtifactManifest}, err
 	}
@@ -57,12 +50,12 @@ func (a Manifest) References() []distribution.Descriptor {
 	return blobs
 }
 
-// SubjectManifest returns the the subject manifest this artifact references.
-func (a Manifest) SubjectManifest() distribution.Descriptor {
+// Subject returns the the subject manifest this artifact references.
+func (a Manifest) Subject() distribution.Descriptor {
 	return distribution.Descriptor{
-		MediaType: a.inner.SubjectManifest.MediaType,
-		Digest:    a.inner.SubjectManifest.Digest,
-		Size:      a.inner.SubjectManifest.Size,
+		MediaType: a.inner.Subject.MediaType,
+		Digest:    a.inner.Subject.Digest,
+		Size:      a.inner.Subject.Size,
 	}
 }
 
@@ -83,6 +76,9 @@ func (d *DeserializedManifest) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(d.raw, &man); err != nil {
 		return err
 	}
+	if man.ArtifactType == "" {
+		return errors.New("artifactType cannot be empty")
+	}
 	d.inner = man
 
 	return nil
@@ -100,12 +96,6 @@ func (d *DeserializedManifest) MarshalJSON() ([]byte, error) {
 // Payload returns the raw content of the Artifact. The contents can be
 // used to calculate the content identifier.
 func (d DeserializedManifest) Payload() (string, []byte, error) {
-	var mediaType string
-	if d.inner.MediaType == "" {
-		mediaType = v1.MediaTypeArtifactManifest
-	} else {
-		mediaType = d.inner.MediaType
-	}
-
-	return mediaType, d.raw, nil
+	// NOTE: This is a hack. The media type should be read from storage.
+	return v1.MediaTypeArtifactManifest, d.raw, nil
 }
