@@ -3,6 +3,8 @@ package oras
 import (
 	"context"
 	"path"
+	"sort"
+	"time"
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -25,10 +27,15 @@ type referrersHandler struct {
 	Digest digest.Digest
 }
 
+type referrers []artifactv1.Descriptor
+
+const createAnnotationName = "io.cncf.oras.artifact.created"
+
 func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, referrerType string) ([]artifactv1.Descriptor, error) {
 	dcontext.GetLogger(ctx).Debug("(*manifestStore).Referrers")
 
-	var referrers []artifactv1.Descriptor
+	var referrersUnsorted referrers
+	var referrersSorted referrers
 
 	repo := h.extContext.Repository
 	manifests, err := repo.Manifests(ctx)
@@ -50,17 +57,27 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 			return nil
 		}
 
-		desc, err := blobStatter.Stat(ctx, referrerRevision)
-		if err != nil {
-			return err
+		// filtering by artifact type
+		if ArtifactMan.ArtifactType() == referrerType {
+			desc, err := blobStatter.Stat(ctx, referrerRevision)
+			if err != nil {
+				return err
+			}
+			desc.MediaType, _, _ = man.Payload()
+			artifactDesc := artifactv1.Descriptor{
+				MediaType:    desc.MediaType,
+				Size:         desc.Size,
+				Digest:       desc.Digest,
+				ArtifactType: ArtifactMan.ArtifactType(),
+				Annotations:  ArtifactMan.Annotations(),
+			}
+
+			if _, ok := artifactDesc.Annotations[createAnnotationName]; !ok {
+				referrersUnsorted = append(referrersUnsorted, artifactDesc)
+			} else {
+				referrersSorted = append(referrersSorted, artifactDesc)
+			}
 		}
-		desc.MediaType, _, _ = man.Payload()
-		referrers = append(referrers, artifactv1.Descriptor{
-			MediaType:    desc.MediaType,
-			Size:         desc.Size,
-			Digest:       desc.Digest,
-			ArtifactType: ArtifactMan.ArtifactType(),
-		})
 		return nil
 	})
 
@@ -72,7 +89,9 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 		return nil, err
 	}
 
-	return referrers, nil
+	sort.Sort(referrersSorted)
+	referrersSorted = append(referrersSorted, referrersUnsorted...)
+	return referrersSorted, nil
 }
 func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath string, ingestor func(digest.Digest) error) error {
 	blobStatter := h.extContext.Registry.BlobStatter()
@@ -127,4 +146,18 @@ func (h *referrersHandler) readlink(ctx context.Context, path string) (digest.Di
 	}
 
 	return linked, nil
+}
+
+func (s referrers) Len() int {
+	return len(s)
+}
+
+func (s referrers) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s referrers) Less(i, j int) bool {
+	firstElem, _ := time.Parse(time.RFC3339, s[i].Annotations[createAnnotationName])
+	secondElem, _ := time.Parse(time.RFC3339, s[j].Annotations[createAnnotationName])
+	return firstElem.After(secondElem)
 }

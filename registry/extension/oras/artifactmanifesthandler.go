@@ -77,7 +77,7 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 	if dm.ArtifactType() == "" {
 		errs = append(errs, distribution.ErrManifestVerification{errors.New("artifactType invalid")})
 	}
-
+	// TODO: check that media type exists
 	if !skipDependencyVerification {
 		bs := amh.repository.Blobs(ctx)
 
