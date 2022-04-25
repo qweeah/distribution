@@ -10,7 +10,6 @@ import (
 )
 
 type discoverGetAPIResponse struct {
-	Name       string                         `json:"name"`
 	Extensions []extension.EnumerateExtension `json:"extensions"`
 }
 
@@ -37,7 +36,6 @@ func (th *extensionHandler) getExtensions(w http.ResponseWriter, r *http.Request
 
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(discoverGetAPIResponse{
-		Name:       th.Repository.Named().Name(),
 		Extensions: enumeratedExtensions,
 	}); err != nil {
 		th.Errors = append(th.Errors, errcode.ErrorCodeUnknown.WithDetail(err))

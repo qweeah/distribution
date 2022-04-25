@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path"
+	"time"
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -77,7 +78,18 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 	if dm.ArtifactType() == "" {
 		errs = append(errs, distribution.ErrManifestVerification{errors.New("artifactType invalid")})
 	}
-	// TODO: check that media type exists
+
+	if dm.MediaType() == "" {
+		errs = append(errs, distribution.ErrManifestVerification{errors.New("mediaType invalid")})
+	}
+
+	if createdAt, ok := dm.Annotations()[createAnnotationName]; ok {
+		_, err := time.Parse(time.RFC3339, createdAt)
+		if err != nil {
+			errs = append(errs, distribution.ErrManifestVerification{errors.New("failed to parse created time: " + err.Error())})
+		}
+	}
+	// TODO: check that created annotation has correct format
 	if !skipDependencyVerification {
 		bs := amh.repository.Blobs(ctx)
 

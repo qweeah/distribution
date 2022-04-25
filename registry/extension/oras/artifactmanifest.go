@@ -42,6 +42,11 @@ func (a Manifest) Annotations() map[string]string {
 	return a.inner.Annotations
 }
 
+// MediaType returns the media type of this ORAS artifact.
+func (a Manifest) MediaType() string {
+	return a.inner.MediaType
+}
+
 // References returns the distribution descriptors for the referenced blobs.
 func (a Manifest) References() []distribution.Descriptor {
 	blobs := make([]distribution.Descriptor, len(a.inner.Blobs))
@@ -84,7 +89,10 @@ func (d *DeserializedManifest) UnmarshalJSON(b []byte) error {
 	if man.ArtifactType == "" {
 		return errors.New("artifactType cannot be empty")
 	}
-	// TODO: add media type enforcement?
+	if man.MediaType == "" {
+		return errors.New("mediaType cannot be empty")
+	}
+
 	d.inner = man
 
 	return nil

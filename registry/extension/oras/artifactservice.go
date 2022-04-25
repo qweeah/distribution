@@ -27,15 +27,13 @@ type referrersHandler struct {
 	Digest digest.Digest
 }
 
-type referrers []artifactv1.Descriptor
-
 const createAnnotationName = "io.cncf.oras.artifact.created"
 
 func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, referrerType string) ([]artifactv1.Descriptor, error) {
 	dcontext.GetLogger(ctx).Debug("(*manifestStore).Referrers")
 
-	var referrersUnsorted referrers
-	var referrersSorted referrers
+	var referrersUnsorted []artifactv1.Descriptor
+	var referrersSorted []artifactv1.Descriptor
 
 	repo := h.extContext.Repository
 	manifests, err := repo.Manifests(ctx)
@@ -89,7 +87,14 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 		return nil, err
 	}
 
-	sort.Sort(referrersSorted)
+	// sort the list of descriptors that contain the created annotation
+	sort.Slice(referrersSorted, func(i, j int) bool {
+		firstElem, _ := time.Parse(time.RFC3339, referrersSorted[i].Annotations[createAnnotationName])
+		secondElem, _ := time.Parse(time.RFC3339, referrersSorted[j].Annotations[createAnnotationName])
+		// most recent artifact first
+		return firstElem.After(secondElem)
+	})
+	// append the descriptors, which don't have a created annotation, to the end
 	referrersSorted = append(referrersSorted, referrersUnsorted...)
 	return referrersSorted, nil
 }
@@ -146,18 +151,4 @@ func (h *referrersHandler) readlink(ctx context.Context, path string) (digest.Di
 	}
 
 	return linked, nil
-}
-
-func (s referrers) Len() int {
-	return len(s)
-}
-
-func (s referrers) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s referrers) Less(i, j int) bool {
-	firstElem, _ := time.Parse(time.RFC3339, s[i].Annotations[createAnnotationName])
-	secondElem, _ := time.Parse(time.RFC3339, s[j].Annotations[createAnnotationName])
-	return firstElem.After(secondElem)
 }

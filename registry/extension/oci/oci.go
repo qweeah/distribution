@@ -95,9 +95,28 @@ func (d *ociNamespace) GetRepositoryRoutes() []extension.Route {
 }
 
 // GetRegistryRoutes returns a list of extension routes scoped at a registry level
-// There are no registry scoped routes exposed by this namespace
 func (d *ociNamespace) GetRegistryRoutes() []extension.Route {
-	return nil
+	var routes []extension.Route
+
+	if d.discoverEnabled {
+		routes = append(routes, extension.Route{
+			Namespace: namespaceName,
+			Extension: extensionName,
+			Component: discoverComponentName,
+			Descriptor: v2.RouteDescriptor{
+				Entity: "Extension",
+				Methods: []v2.MethodDescriptor{
+					{
+						Method:      "GET",
+						Description: "Get all extensions enabled for a registry.",
+					},
+				},
+			},
+			Dispatcher: d.discoverDispatcher,
+		})
+	}
+
+	return routes
 }
 
 // GetNamespaceName returns the name associated with the namespace
