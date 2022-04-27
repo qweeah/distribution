@@ -89,7 +89,7 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 			errs = append(errs, distribution.ErrManifestVerification{errors.New("failed to parse created time: " + err.Error())})
 		}
 	}
-	// TODO: check that created annotation has correct format
+
 	if !skipDependencyVerification {
 		bs := amh.repository.Blobs(ctx)
 

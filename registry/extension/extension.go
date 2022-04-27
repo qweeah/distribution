@@ -80,19 +80,16 @@ func EnumerateRegistered(ctx Context) (enumeratedExtensions []EnumerateExtension
 			Endpoints:   []string{},
 		}
 
+		scopedRoutes := namespace.GetRepositoryRoutes()
+
 		// if the repository is not set in the context, scope is registry wide
 		if ctx.Repository == nil {
-			registryScoped := namespace.GetRegistryRoutes()
-			for _, regScoped := range registryScoped {
-				path := fmt.Sprintf("_%s/%s/%s", regScoped.Namespace, regScoped.Extension, regScoped.Component)
-				enumerateExtension.Endpoints = append(enumerateExtension.Endpoints, path)
-			}
-		} else {
-			repositoryScoped := namespace.GetRepositoryRoutes()
-			for _, repScoped := range repositoryScoped {
-				path := fmt.Sprintf("_%s/%s/%s", repScoped.Namespace, repScoped.Extension, repScoped.Component)
-				enumerateExtension.Endpoints = append(enumerateExtension.Endpoints, path)
-			}
+			scopedRoutes = namespace.GetRegistryRoutes()
+		}
+
+		for _, route := range scopedRoutes {
+			path := fmt.Sprintf("_%s/%s/%s", route.Namespace, route.Extension, route.Component)
+			enumerateExtension.Endpoints = append(enumerateExtension.Endpoints, path)
 		}
 
 		// add extension to list if endpoints exist
