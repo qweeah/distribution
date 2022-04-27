@@ -25,7 +25,7 @@ func (th *extensionHandler) getExtensions(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 
 	// get list of extension information seperated at the namespace level
-	enumeratedExtensions := extension.EnumerateRegistered(r.Context())
+	enumeratedExtensions := extension.EnumerateRegistered(*th.Context)
 
 	// remove the oci extension so it's not returned by discover
 	for i, e := range enumeratedExtensions {

@@ -13,7 +13,7 @@ import (
 
 // referrersResponse describes the response body of the referrers API.
 type referrersResponse struct {
-	Referrers []orasartifacts.Descriptor `json:"references"`
+	Referrers []orasartifacts.Descriptor `json:"referrers"`
 }
 
 func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) {
