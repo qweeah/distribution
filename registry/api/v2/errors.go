@@ -154,4 +154,14 @@ var (
 		to return) is not an integer, or "n" is negative.`,
 		HTTPStatusCode: http.StatusBadRequest,
 	})
+
+	// ErrorCodeReferrerNotFound is returned if a client provides an invalid referrer digest
+	// in the `nextToken` field
+	ErrorCodeReferrerNotFound = errcode.Register("errcode", errcode.ErrorDescriptor{
+		Value:   "REFERRER_NOT_FOUND",
+		Message: "referrer with digest not found",
+		Description: `Returned if a client provides an invalid referrer digest
+		in the "nextToken" for pagination`,
+		HTTPStatusCode: http.StatusNotFound,
+	})
 )
