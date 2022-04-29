@@ -155,13 +155,13 @@ var (
 		HTTPStatusCode: http.StatusBadRequest,
 	})
 
-	// ErrorCodeReferrerNotFound is returned if a client provides an invalid referrer digest
-	// in the `nextToken` field
-	ErrorCodeReferrerNotFound = errcode.Register("errcode", errcode.ErrorDescriptor{
-		Value:   "REFERRER_NOT_FOUND",
-		Message: "referrer with digest not found",
-		Description: `Returned if a client provides an invalid referrer digest
-		in the "nextToken" for pagination`,
-		HTTPStatusCode: http.StatusNotFound,
+	// ErrorCodeMalformedNextToken is returned when uploading a blob if the
+	// provided digest does not match the blob contents.
+	ErrorCodeMalformedNextToken = errcode.Register(errGroup, errcode.ErrorDescriptor{
+		Value:   "MALFORMED_NEXTTOKEN",
+		Message: "provided nextToken is invalid",
+		Description: `Returned if a client provides a non-empty nextToken value that
+		cannot be properly parsed`,
+		HTTPStatusCode: http.StatusBadRequest,
 	})
 )

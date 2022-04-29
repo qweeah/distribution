@@ -11,6 +11,7 @@ import (
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 // artifactManifestHandler is a ManifestHandler that covers ORAS Artifacts.
@@ -79,7 +80,7 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 		errs = append(errs, distribution.ErrManifestVerification{errors.New("artifactType invalid")})
 	}
 
-	if dm.MediaType() == "" {
+	if dm.MediaType() != v1.MediaTypeArtifactManifest {
 		errs = append(errs, distribution.ErrManifestVerification{errors.New("mediaType invalid")})
 	}
 

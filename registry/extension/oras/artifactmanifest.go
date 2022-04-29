@@ -89,8 +89,8 @@ func (d *DeserializedManifest) UnmarshalJSON(b []byte) error {
 	if man.ArtifactType == "" {
 		return errors.New("artifactType cannot be empty")
 	}
-	if man.MediaType == "" {
-		return errors.New("mediaType cannot be empty")
+	if man.MediaType != v1.MediaTypeArtifactManifest {
+		return errors.New("mediaType is invalid")
 	}
 
 	d.inner = man

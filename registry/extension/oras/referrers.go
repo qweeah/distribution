@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -21,21 +22,31 @@ type referrersResponse struct {
 
 const maxPageSize = 50
 
+// minimum page size used for # of digests to put in nextToken
+const minPageSize = 3
+
 func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) {
 	dcontext.GetLogger(h.extContext).Debug("Get")
 
 	// This can be empty
 	artifactType := r.FormValue("artifactType")
 	nPage, err := strconv.Atoi(r.FormValue("n"))
-	if nPage < 0 || err != nil {
+	// client specified nPage must be greater than min page size
+	if nPage < minPageSize || err != nil {
 		nPage = maxPageSize
 	}
 	nextToken := r.FormValue("nextToken")
+	nextTokenMap := make(map[string]string)
 	if nextToken != "" {
-		_, err = digest.Parse(nextToken)
-		if err != nil {
-			h.extContext.Errors = append(h.extContext.Errors, v2.ErrorCodeDigestInvalid.WithDetail("nextToken digest parsing failed"))
-			return
+		nextTokenList := strings.Split(nextToken, ",")
+		for _, token := range nextTokenList {
+			_, err = digest.Parse(token)
+			if err != nil {
+				h.extContext.Errors = append(h.extContext.Errors, v2.ErrorCodeMalformedNextToken.WithDetail("nextToken parsing failed"))
+				return
+			}
+			// store nextToken digest in a map for quick access
+			nextTokenMap[token] = token
 		}
 	}
 
@@ -61,16 +72,15 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 	// only consider pagination if # of referrers is greater than page size
 	if len(referrers) > nPage {
 		startIndex := 0
-		if nextToken != "" {
+		if len(nextTokenMap) > 0 {
 			for i, ref := range referrers {
-				if ref.Digest.String() == nextToken {
-					startIndex = i + 1
+				// check if ref matches a digest in nextToken list
+				if _, ok := nextTokenMap[ref.Digest.String()]; ok {
+					// set the starting index to the largest index
+					if (i + 1) > startIndex {
+						startIndex = i + 1
+					}
 				}
-			}
-			// if matching referrer not found
-			if startIndex == 0 {
-				h.extContext.Errors = append(h.extContext.Errors, v2.ErrorCodeReferrerNotFound.WithDetail("matching referrer with digest in nextToken not found"))
-				return
 			}
 		}
 
@@ -84,8 +94,13 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 			referrers = referrers[startIndex:]
 		} else {
 			referrers = referrers[startIndex:(startIndex + nPage)]
+			var nextDgsts []string
+			// generate string list of digests for nextToken
+			for _, ref := range referrers[nPage-minPageSize:] {
+				nextDgsts = append(nextDgsts, ref.Digest.String())
+			}
 			// add the Link Header
-			w.Header().Set("Link", generateLinkHeader(h.extContext.Repository.Named().Name(), h.Digest.String(), artifactType, referrers[nPage-1].Digest.String(), nPage))
+			w.Header().Set("Link", generateLinkHeader(h.extContext.Repository.Named().Name(), h.Digest.String(), artifactType, nextDgsts, nPage))
 		}
 	}
 
@@ -102,12 +117,12 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func generateLinkHeader(repoName, subjectDigest, artifactType, lastDigest string, nPage int) string {
+func generateLinkHeader(repoName, subjectDigest, artifactType string, lastDigests []string, nPage int) string {
 	url := fmt.Sprintf("/v2/%s/_oras/artifacts/referrers?digest=%s&artifactType=%s&n=%d&nextToken=%s",
 		repoName,
 		subjectDigest,
 		artifactType,
 		nPage,
-		lastDigest)
+		strings.Join(lastDigests, ","))
 	return fmt.Sprintf("<%s>; rel=\"next\"", url)
 }
