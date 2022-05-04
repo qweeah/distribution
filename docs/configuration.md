@@ -118,6 +118,8 @@ storage:
     secretkey: awssecretkey
     region: us-west-1
     regionendpoint: http://myobjects.local
+    forcepathstyle: true
+    accelerate: false
     bucket: bucketname
     encrypt: true
     keyid: mykeyid
@@ -128,6 +130,7 @@ storage:
     multipartcopymaxconcurrency: 100
     multipartcopythresholdsize: 33554432
     rootdirectory: /s3/object/name/prefix
+    usedualstack: false
   swift:
     username: username
     password: password
@@ -421,6 +424,8 @@ storage:
     secretkey: awssecretkey
     region: us-west-1
     regionendpoint: http://myobjects.local
+    forcepathstyle: true
+    accelerate: false
     bucket: bucketname
     encrypt: true
     keyid: mykeyid
@@ -1237,7 +1242,7 @@ Use the `manifests` subsection to configure validation of manifests. If
 #### `urls`
 
 The `allow` and `deny` options are each a list of
-[regular expressions](https://godoc.org/regexp/syntax) that restrict the URLs in
+[regular expressions](https://pkg.go.dev/regexp/syntax) that restrict the URLs in
 pushed manifests.
 
 If `allow` is unset, pushing a manifest containing URLs fails.

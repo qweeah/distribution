@@ -20,7 +20,6 @@ import (
 	"github.com/docker/go-metrics"
 	gorhandlers "github.com/gorilla/handlers"
 	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yvasiyarov/gorelic"
 	"golang.org/x/crypto/acme"
@@ -38,22 +37,16 @@ import (
 // a map of TLS cipher suite names to constants in https://golang.org/pkg/crypto/tls/#pkg-constants
 var cipherSuites = map[string]uint16{
 	// TLS 1.0 - 1.2 cipher suites
-	"TLS_RSA_WITH_RC4_128_SHA":                      tls.TLS_RSA_WITH_RC4_128_SHA,
 	"TLS_RSA_WITH_3DES_EDE_CBC_SHA":                 tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
 	"TLS_RSA_WITH_AES_128_CBC_SHA":                  tls.TLS_RSA_WITH_AES_128_CBC_SHA,
 	"TLS_RSA_WITH_AES_256_CBC_SHA":                  tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-	"TLS_RSA_WITH_AES_128_CBC_SHA256":               tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
 	"TLS_RSA_WITH_AES_128_GCM_SHA256":               tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
 	"TLS_RSA_WITH_AES_256_GCM_SHA384":               tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-	"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA":              tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
 	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA":          tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
 	"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA":          tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-	"TLS_ECDHE_RSA_WITH_RC4_128_SHA":                tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
 	"TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA":           tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
 	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA":            tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
 	"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA":            tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256":       tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256":         tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
 	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256":         tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 	"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256":       tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 	"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384":         tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -83,8 +76,6 @@ var defaultCipherSuites = []uint16{
 var defaultTLSVersionStr = "tls1.2"
 var tlsVersions = map[string]uint16{
 	// user specified values
-	"tls1.0": tls.VersionTLS10,
-	"tls1.1": tls.VersionTLS11,
 	"tls1.2": tls.VersionTLS12,
 	"tls1.3": tls.VersionTLS13,
 }
@@ -111,16 +102,16 @@ var ServeCmd = &cobra.Command{
 
 		if config.HTTP.Debug.Addr != "" {
 			go func(addr string) {
-				log.Infof("debug server listening %v", addr)
+				logrus.Infof("debug server listening %v", addr)
 				if err := http.ListenAndServe(addr, nil); err != nil {
-					log.Fatalf("error listening on debug interface: %v", err)
+					logrus.Fatalf("error listening on debug interface: %v", err)
 				}
 			}(config.HTTP.Debug.Addr)
 		}
 
 		registry, err := NewRegistry(ctx, config)
 		if err != nil {
-			log.Fatalln(err)
+			logrus.Fatalln(err)
 		}
 
 		if config.HTTP.Debug.Prometheus.Enabled {
@@ -128,12 +119,12 @@ var ServeCmd = &cobra.Command{
 			if path == "" {
 				path = "/metrics"
 			}
-			log.Info("providing prometheus metrics on ", path)
+			logrus.Info("providing prometheus metrics on ", path)
 			http.Handle(path, metrics.Handler())
 		}
 
 		if err = registry.ListenAndServe(); err != nil {
-			log.Fatalln(err)
+			logrus.Fatalln(err)
 		}
 	},
 }
@@ -231,11 +222,18 @@ func (registry *Registry) ListenAndServe() error {
 		}
 		dcontext.GetLogger(registry.app).Infof("restricting TLS version to %s or higher", config.HTTP.TLS.MinimumTLS)
 
-		tlsCipherSuites, err := getCipherSuites(config.HTTP.TLS.CipherSuites)
-		if err != nil {
-			return err
+		var tlsCipherSuites []uint16
+		// configuring cipher suites are no longer supported after the tls1.3.
+		// (https://go.dev/blog/tls-cipher-suites)
+		if tlsMinVersion > tls.VersionTLS12 {
+			dcontext.GetLogger(registry.app).Warnf("restricting TLS cipher suites to empty. Because configuring cipher suites is no longer supported in %s", config.HTTP.TLS.MinimumTLS)
+		} else {
+			tlsCipherSuites, err = getCipherSuites(config.HTTP.TLS.CipherSuites)
+			if err != nil {
+				return err
+			}
+			dcontext.GetLogger(registry.app).Infof("restricting TLS cipher suites to: %s", strings.Join(getCipherSuiteNames(tlsCipherSuites), ","))
 		}
-		dcontext.GetLogger(registry.app).Infof("restricting TLS cipher suites to: %s", strings.Join(getCipherSuiteNames(tlsCipherSuites), ","))
 
 		tlsConf := &tls.Config{
 			ClientAuth:               tls.NoClientCert,
@@ -344,7 +342,7 @@ func configureReporting(app *handlers.App) http.Handler {
 // configureLogging prepares the context with a logger using the
 // configuration.
 func configureLogging(ctx context.Context, config *configuration.Configuration) (context.Context, error) {
-	log.SetLevel(logLevel(config.Log.Level))
+	logrus.SetLevel(logLevel(config.Log.Level))
 
 	formatter := config.Log.Formatter
 	if formatter == "" {
@@ -353,16 +351,16 @@ func configureLogging(ctx context.Context, config *configuration.Configuration) 
 
 	switch formatter {
 	case "json":
-		log.SetFormatter(&log.JSONFormatter{
+		logrus.SetFormatter(&logrus.JSONFormatter{
 			TimestampFormat:   time.RFC3339Nano,
 			DisableHTMLEscape: true,
 		})
 	case "text":
-		log.SetFormatter(&log.TextFormatter{
+		logrus.SetFormatter(&logrus.TextFormatter{
 			TimestampFormat: time.RFC3339Nano,
 		})
 	case "logstash":
-		log.SetFormatter(&logstash.LogstashFormatter{
+		logrus.SetFormatter(&logstash.LogstashFormatter{
 			Formatter: &logrus.JSONFormatter{TimestampFormat: time.RFC3339Nano},
 		})
 	default:
@@ -373,7 +371,7 @@ func configureLogging(ctx context.Context, config *configuration.Configuration) 
 	}
 
 	if config.Log.Formatter != "" {
-		log.Debugf("using %q logging formatter", config.Log.Formatter)
+		logrus.Debugf("using %q logging formatter", config.Log.Formatter)
 	}
 
 	if len(config.Log.Fields) > 0 {
@@ -391,11 +389,11 @@ func configureLogging(ctx context.Context, config *configuration.Configuration) 
 	return ctx, nil
 }
 
-func logLevel(level configuration.Loglevel) log.Level {
-	l, err := log.ParseLevel(string(level))
+func logLevel(level configuration.Loglevel) logrus.Level {
+	l, err := logrus.ParseLevel(string(level))
 	if err != nil {
-		l = log.InfoLevel
-		log.Warnf("error parsing level %q: %v, using %q	", level, err, l)
+		l = logrus.InfoLevel
+		logrus.Warnf("error parsing level %q: %v, using %q	", level, err, l)
 	}
 
 	return l
@@ -421,10 +419,10 @@ func configureBugsnag(config *configuration.Configuration) {
 	// configure logrus bugsnag hook
 	hook, err := logrus_bugsnag.NewBugsnagHook()
 	if err != nil {
-		log.Fatalln(err)
+		logrus.Fatalln(err)
 	}
 
-	log.AddHook(hook)
+	logrus.AddHook(hook)
 }
 
 // panicHandler add an HTTP handler to web app. The handler recover the happening
@@ -434,7 +432,7 @@ func panicHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Panic(fmt.Sprintf("%v", err))
+				logrus.Panic(fmt.Sprintf("%v", err))
 			}
 		}()
 		handler.ServeHTTP(w, r)

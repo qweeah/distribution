@@ -12,7 +12,11 @@ on:
 jobs:
 
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.16.x", "1.17.x"]
+        platform: ["ubuntu-latest"]
+    runs-on: ${{ matrix.platform }}
     env:
       DOCKER_BUILDTAGS: "include_oss include_gcs"
       CGO_ENABLED: 1
@@ -30,20 +34,19 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.15.*
+        go-version: ${{ matrix.go-version }}
 
     - name: Dependencies
       run: |
           sudo apt-get -q update
           sudo -E apt-get -yq --no-install-suggests --no-install-recommends install python2-minimal
-          cd /tmp && go get -u github.com/vbatts/git-validation
+          cd /tmp && go install github.com/vbatts/git-validation@latest
 
     - name: Build
       working-directory: ./src/github.com/distribution/distribution
       run: |
         DCO_VERBOSITY=-q script/validate/dco
         GO111MODULE=on script/setup/install-dev-tools
-        script/validate/vendor
         go build -i .
         make check
         make build

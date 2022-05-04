@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -74,6 +75,18 @@ const listMax = 1000
 // noStorageClass defines the value to be used if storage class is not supported by the S3 endpoint
 const noStorageClass = "NONE"
 
+// s3StorageClasses lists all compatible (instant retrieval) S3 storage classes
+var s3StorageClasses = []string{
+	noStorageClass,
+	s3.StorageClassStandard,
+	s3.StorageClassReducedRedundancy,
+	s3.StorageClassStandardIa,
+	s3.StorageClassOnezoneIa,
+	s3.StorageClassIntelligentTiering,
+	s3.StorageClassOutposts,
+	s3.StorageClassGlacierIr,
+}
+
 // validRegions maps known s3 region identifiers to region descriptors
 var validRegions = map[string]struct{}{}
 
@@ -87,6 +100,7 @@ type DriverParameters struct {
 	Bucket                      string
 	Region                      string
 	RegionEndpoint              string
+	ForcePathStyle              bool
 	Encrypt                     bool
 	KeyID                       string
 	Secure                      bool
@@ -96,11 +110,14 @@ type DriverParameters struct {
 	MultipartCopyChunkSize      int64
 	MultipartCopyMaxConcurrency int64
 	MultipartCopyThresholdSize  int64
+	MultipartCombineSmallPart   bool
 	RootDirectory               string
 	StorageClass                string
 	UserAgent                   string
 	ObjectACL                   string
 	SessionToken                string
+	UseDualStack                bool
+	Accelerate                  bool
 }
 
 func init() {
@@ -144,6 +161,7 @@ type driver struct {
 	MultipartCopyChunkSize      int64
 	MultipartCopyMaxConcurrency int64
 	MultipartCopyThresholdSize  int64
+	MultipartCombineSmallPart   bool
 	RootDirectory               string
 	StorageClass                string
 	ObjectACL                   string
@@ -182,6 +200,23 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 	regionEndpoint := parameters["regionendpoint"]
 	if regionEndpoint == nil {
 		regionEndpoint = ""
+	}
+
+	forcePathStyleBool := true
+	forcePathStyle := parameters["forcepathstyle"]
+	switch forcePathStyle := forcePathStyle.(type) {
+	case string:
+		b, err := strconv.ParseBool(forcePathStyle)
+		if err != nil {
+			return nil, fmt.Errorf("the forcePathStyle parameter should be a boolean")
+		}
+		forcePathStyleBool = b
+	case bool:
+		forcePathStyleBool = forcePathStyle
+	case nil:
+		// do nothing
+	default:
+		return nil, fmt.Errorf("the forcePathStyle parameter should be a boolean")
 	}
 
 	regionName := parameters["region"]
@@ -304,16 +339,27 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 	if storageClassParam != nil {
 		storageClassString, ok := storageClassParam.(string)
 		if !ok {
-			return nil, fmt.Errorf("the storageclass parameter must be one of %v, %v invalid",
-				[]string{s3.StorageClassStandard, s3.StorageClassReducedRedundancy}, storageClassParam)
+			return nil, fmt.Errorf(
+				"the storageclass parameter must be one of %v, %v invalid",
+				s3StorageClasses,
+				storageClassParam,
+			)
 		}
 		// All valid storage class parameters are UPPERCASE, so be a bit more flexible here
 		storageClassString = strings.ToUpper(storageClassString)
 		if storageClassString != noStorageClass &&
 			storageClassString != s3.StorageClassStandard &&
-			storageClassString != s3.StorageClassReducedRedundancy {
-			return nil, fmt.Errorf("the storageclass parameter must be one of %v, %v invalid",
-				[]string{noStorageClass, s3.StorageClassStandard, s3.StorageClassReducedRedundancy}, storageClassParam)
+			storageClassString != s3.StorageClassReducedRedundancy &&
+			storageClassString != s3.StorageClassStandardIa &&
+			storageClassString != s3.StorageClassOnezoneIa &&
+			storageClassString != s3.StorageClassIntelligentTiering &&
+			storageClassString != s3.StorageClassOutposts &&
+			storageClassString != s3.StorageClassGlacierIr {
+			return nil, fmt.Errorf(
+				"the storageclass parameter must be one of %v, %v invalid",
+				s3StorageClasses,
+				storageClassParam,
+			)
 		}
 		storageClass = storageClassString
 	}
@@ -337,7 +383,58 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		objectACL = objectACLString
 	}
 
+	useDualStackBool := false
+	useDualStack := parameters["usedualstack"]
+	switch useDualStack := useDualStack.(type) {
+	case string:
+		b, err := strconv.ParseBool(useDualStack)
+		if err != nil {
+			return nil, fmt.Errorf("the useDualStack parameter should be a boolean")
+		}
+		useDualStackBool = b
+	case bool:
+		useDualStackBool = useDualStack
+	case nil:
+		// do nothing
+	default:
+		return nil, fmt.Errorf("the useDualStack parameter should be a boolean")
+	}
+
+	mutlipartCombineSmallPart := true
+	combine := parameters["multipartcombinesmallpart"]
+	switch combine := combine.(type) {
+	case string:
+		b, err := strconv.ParseBool(combine)
+		if err != nil {
+			return nil, fmt.Errorf("the multipartcombinesmallpart parameter should be a boolean")
+		}
+		mutlipartCombineSmallPart = b
+	case bool:
+		mutlipartCombineSmallPart = combine
+	case nil:
+		// do nothing
+	default:
+		return nil, fmt.Errorf("the multipartcombinesmallpart parameter should be a boolean")
+	}
+
 	sessionToken := ""
+
+	accelerateBool := false
+	accelerate := parameters["accelerate"]
+	switch accelerate := accelerate.(type) {
+	case string:
+		b, err := strconv.ParseBool(accelerate)
+		if err != nil {
+			return nil, fmt.Errorf("the accelerate parameter should be a boolean")
+		}
+		accelerateBool = b
+	case bool:
+		accelerateBool = accelerate
+	case nil:
+		// do nothing
+	default:
+		return nil, fmt.Errorf("the accelerate parameter should be a boolean")
+	}
 
 	params := DriverParameters{
 		fmt.Sprint(accessKey),
@@ -345,6 +442,7 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		fmt.Sprint(bucket),
 		region,
 		fmt.Sprint(regionEndpoint),
+		forcePathStyleBool,
 		encryptBool,
 		fmt.Sprint(keyID),
 		secureBool,
@@ -354,11 +452,14 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		multipartCopyChunkSize,
 		multipartCopyMaxConcurrency,
 		multipartCopyThresholdSize,
+		mutlipartCombineSmallPart,
 		fmt.Sprint(rootDirectory),
 		storageClass,
 		fmt.Sprint(userAgent),
 		objectACL,
 		fmt.Sprint(sessionToken),
+		useDualStackBool,
+		accelerateBool,
 	}
 
 	return New(params)
@@ -414,12 +515,16 @@ func New(params DriverParameters) (*Driver, error) {
 	}
 
 	if params.RegionEndpoint != "" {
-		awsConfig.WithS3ForcePathStyle(true)
 		awsConfig.WithEndpoint(params.RegionEndpoint)
+		awsConfig.WithS3ForcePathStyle(params.ForcePathStyle)
 	}
 
+	awsConfig.WithS3UseAccelerate(params.Accelerate)
 	awsConfig.WithRegion(params.Region)
 	awsConfig.WithDisableSSL(!params.Secure)
+	if params.UseDualStack {
+		awsConfig.UseDualStackEndpoint = endpoints.DualStackEndpointStateEnabled
+	}
 
 	if params.UserAgent != "" || params.SkipVerify {
 		httpTransport := http.DefaultTransport
@@ -474,6 +579,7 @@ func New(params DriverParameters) (*Driver, error) {
 		MultipartCopyChunkSize:      params.MultipartCopyChunkSize,
 		MultipartCopyMaxConcurrency: params.MultipartCopyMaxConcurrency,
 		MultipartCopyThresholdSize:  params.MultipartCopyThresholdSize,
+		MultipartCombineSmallPart:   params.MultipartCombineSmallPart,
 		RootDirectory:               params.RootDirectory,
 		StorageClass:                params.StorageClass,
 		ObjectACL:                   params.ObjectACL,
@@ -557,40 +663,62 @@ func (d *driver) Writer(ctx context.Context, path string, appendParam bool) (sto
 		}
 		return d.newWriter(key, *resp.UploadId, nil), nil
 	}
-	resp, err := d.S3.ListMultipartUploads(&s3.ListMultipartUploadsInput{
+
+	listMultipartUploadsInput := &s3.ListMultipartUploadsInput{
 		Bucket: aws.String(d.Bucket),
 		Prefix: aws.String(key),
-	})
-	if err != nil {
-		return nil, parseError(path, err)
 	}
-	var allParts []*s3.Part
-	for _, multi := range resp.Uploads {
-		if key != *multi.Key {
-			continue
-		}
-		resp, err := d.S3.ListParts(&s3.ListPartsInput{
-			Bucket:   aws.String(d.Bucket),
-			Key:      aws.String(key),
-			UploadId: multi.UploadId,
-		})
+	for {
+		resp, err := d.S3.ListMultipartUploads(listMultipartUploadsInput)
 		if err != nil {
 			return nil, parseError(path, err)
 		}
-		allParts = append(allParts, resp.Parts...)
-		for *resp.IsTruncated {
-			resp, err = d.S3.ListParts(&s3.ListPartsInput{
-				Bucket:           aws.String(d.Bucket),
-				Key:              aws.String(key),
-				UploadId:         multi.UploadId,
-				PartNumberMarker: resp.NextPartNumberMarker,
+
+		// resp.Uploads can only be empty on the first call
+		// if there were no more results to return after the first call, resp.IsTruncated would have been false
+		// and the loop would be exited without recalling ListMultipartUploads
+		if len(resp.Uploads) == 0 {
+			break
+		}
+
+		var allParts []*s3.Part
+		for _, multi := range resp.Uploads {
+			if key != *multi.Key {
+				continue
+			}
+
+			partsList, err := d.S3.ListParts(&s3.ListPartsInput{
+				Bucket:   aws.String(d.Bucket),
+				Key:      aws.String(key),
+				UploadId: multi.UploadId,
 			})
 			if err != nil {
 				return nil, parseError(path, err)
 			}
-			allParts = append(allParts, resp.Parts...)
+			allParts = append(allParts, partsList.Parts...)
+			for *resp.IsTruncated {
+				partsList, err = d.S3.ListParts(&s3.ListPartsInput{
+					Bucket:           aws.String(d.Bucket),
+					Key:              aws.String(key),
+					UploadId:         multi.UploadId,
+					PartNumberMarker: partsList.NextPartNumberMarker,
+				})
+				if err != nil {
+					return nil, parseError(path, err)
+				}
+				allParts = append(allParts, partsList.Parts...)
+			}
+			return d.newWriter(key, *multi.UploadId, allParts), nil
 		}
-		return d.newWriter(key, *multi.UploadId, allParts), nil
+
+		// resp.NextUploadIdMarker must have at least one element or we would have returned not found
+		listMultipartUploadsInput.UploadIdMarker = resp.NextUploadIdMarker
+
+		// from the s3 api docs, IsTruncated "specifies whether (true) or not (false) all of the results were returned"
+		// if everything has been returned, break
+		if resp.IsTruncated == nil || !*resp.IsTruncated {
+			break
+		}
 	}
 	return nil, storagedriver.PathNotFoundError{Path: path}
 }
@@ -598,7 +726,7 @@ func (d *driver) Writer(ctx context.Context, path string, appendParam bool) (sto
 // Stat retrieves the FileInfo for the given path, including the current size
 // in bytes and the creation time.
 func (d *driver) Stat(ctx context.Context, path string) (storagedriver.FileInfo, error) {
-	resp, err := d.S3.ListObjects(&s3.ListObjectsInput{
+	resp, err := d.S3.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket:  aws.String(d.Bucket),
 		Prefix:  aws.String(d.s3Path(path)),
 		MaxKeys: aws.Int64(1),
@@ -643,7 +771,7 @@ func (d *driver) List(ctx context.Context, opath string) ([]string, error) {
 		prefix = "/"
 	}
 
-	resp, err := d.S3.ListObjects(&s3.ListObjectsInput{
+	resp, err := d.S3.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket:    aws.String(d.Bucket),
 		Prefix:    aws.String(d.s3Path(path)),
 		Delimiter: aws.String("/"),
@@ -667,12 +795,12 @@ func (d *driver) List(ctx context.Context, opath string) ([]string, error) {
 		}
 
 		if *resp.IsTruncated {
-			resp, err = d.S3.ListObjects(&s3.ListObjectsInput{
-				Bucket:    aws.String(d.Bucket),
-				Prefix:    aws.String(d.s3Path(path)),
-				Delimiter: aws.String("/"),
-				MaxKeys:   aws.Int64(listMax),
-				Marker:    resp.NextMarker,
+			resp, err = d.S3.ListObjectsV2(&s3.ListObjectsV2Input{
+				Bucket:            aws.String(d.Bucket),
+				Prefix:            aws.String(d.s3Path(path)),
+				Delimiter:         aws.String("/"),
+				MaxKeys:           aws.Int64(listMax),
+				ContinuationToken: resp.NextContinuationToken,
 			})
 			if err != nil {
 				return nil, err
@@ -821,14 +949,14 @@ func (d *driver) Delete(ctx context.Context, path string) error {
 
 	// list objects under the given path as a subpath (suffix with slash "/")
 	s3Path := d.s3Path(path) + "/"
-	listObjectsInput := &s3.ListObjectsInput{
+	listObjectsInput := &s3.ListObjectsV2Input{
 		Bucket: aws.String(d.Bucket),
 		Prefix: aws.String(s3Path),
 	}
 ListLoop:
 	for {
 		// list all the objects
-		resp, err := d.S3.ListObjects(listObjectsInput)
+		resp, err := d.S3.ListObjectsV2(listObjectsInput)
 
 		// resp.Contents can only be empty on the first call
 		// if there were no more results to return after the first call, resp.IsTruncated would have been false
@@ -844,7 +972,7 @@ ListLoop:
 		}
 
 		// resp.Contents must have at least one element or we would have returned not found
-		listObjectsInput.Marker = resp.Contents[len(resp.Contents)-1].Key
+		listObjectsInput.StartAfter = resp.Contents[len(resp.Contents)-1].Key
 
 		// from the s3 api docs, IsTruncated "specifies whether (true) or not (false) all of the results were returned"
 		// if everything has been returned, break
@@ -941,110 +1069,84 @@ func (d *driver) Walk(ctx context.Context, from string, f storagedriver.WalkFn) 
 	return nil
 }
 
-type walkInfoContainer struct {
-	storagedriver.FileInfoFields
-	prefix *string
-}
-
-// Path provides the full path of the target of this file info.
-func (wi walkInfoContainer) Path() string {
-	return wi.FileInfoFields.Path
-}
-
-// Size returns current length in bytes of the file. The return value can
-// be used to write to the end of the file at path. The value is
-// meaningless if IsDir returns true.
-func (wi walkInfoContainer) Size() int64 {
-	return wi.FileInfoFields.Size
-}
-
-// ModTime returns the modification time for the file. For backends that
-// don't have a modification time, the creation time should be returned.
-func (wi walkInfoContainer) ModTime() time.Time {
-	return wi.FileInfoFields.ModTime
-}
-
-// IsDir returns true if the path is a directory.
-func (wi walkInfoContainer) IsDir() bool {
-	return wi.FileInfoFields.IsDir
-}
-
 func (d *driver) doWalk(parentCtx context.Context, objectCount *int64, path, prefix string, f storagedriver.WalkFn) error {
-	var retError error
+	var (
+		retError error
+		// the most recent directory walked for de-duping
+		prevDir string
+		// the most recent skip directory to avoid walking over undesirable files
+		prevSkipDir string
+	)
+	prevDir = prefix + path
 
 	listObjectsInput := &s3.ListObjectsV2Input{
-		Bucket:    aws.String(d.Bucket),
-		Prefix:    aws.String(path),
-		Delimiter: aws.String("/"),
-		MaxKeys:   aws.Int64(listMax),
+		Bucket:  aws.String(d.Bucket),
+		Prefix:  aws.String(path),
+		MaxKeys: aws.Int64(listMax),
 	}
 
 	ctx, done := dcontext.WithTrace(parentCtx)
 	defer done("s3aws.ListObjectsV2Pages(%s)", path)
+
+	// When the "delimiter" argument is omitted, the S3 list API will list all objects in the bucket
+	// recursively, omitting directory paths. Objects are listed in sorted, depth-first order so we
+	// can infer all the directories by comparing each object path to the last one we saw.
+	// See: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ListingKeysUsingAPIs.html
+
+	// With files returned in sorted depth-first order, directories are inferred in the same order.
+	// ErrSkipDir is handled by explicitly skipping over any files under the skipped directory. This may be sub-optimal
+	// for extreme edge cases but for the general use case in a registry, this is orders of magnitude
+	// faster than a more explicit recursive implementation.
 	listObjectErr := d.S3.ListObjectsV2PagesWithContext(ctx, listObjectsInput, func(objects *s3.ListObjectsV2Output, lastPage bool) bool {
-
-		var count int64
-		// KeyCount was introduced with version 2 of the GET Bucket operation in S3.
-		// Some S3 implementations don't support V2 now, so we fall back to manual
-		// calculation of the key count if required
-		if objects.KeyCount != nil {
-			count = *objects.KeyCount
-			*objectCount += *objects.KeyCount
-		} else {
-			count = int64(len(objects.Contents) + len(objects.CommonPrefixes))
-			*objectCount += count
-		}
-
-		walkInfos := make([]walkInfoContainer, 0, count)
-
-		for _, dir := range objects.CommonPrefixes {
-			commonPrefix := *dir.Prefix
-			walkInfos = append(walkInfos, walkInfoContainer{
-				prefix: dir.Prefix,
-				FileInfoFields: storagedriver.FileInfoFields{
-					IsDir: true,
-					Path:  strings.Replace(commonPrefix[:len(commonPrefix)-1], d.s3Path(""), prefix, 1),
-				},
-			})
-		}
+		walkInfos := make([]storagedriver.FileInfoInternal, 0, len(objects.Contents))
 
 		for _, file := range objects.Contents {
-			// empty prefixes are listed as objects inside its own prefix.
-			// https://docs.aws.amazon.com/AmazonS3/latest/user-guide/using-folders.html
-			if strings.HasSuffix(*file.Key, "/") {
-				continue
+			filePath := strings.Replace(*file.Key, d.s3Path(""), prefix, 1)
+
+			// get a list of all inferred directories between the previous directory and this file
+			dirs := directoryDiff(prevDir, filePath)
+			if len(dirs) > 0 {
+				for _, dir := range dirs {
+					walkInfos = append(walkInfos, storagedriver.FileInfoInternal{
+						FileInfoFields: storagedriver.FileInfoFields{
+							IsDir: true,
+							Path:  dir,
+						},
+					})
+					prevDir = dir
+				}
 			}
-			walkInfos = append(walkInfos, walkInfoContainer{
+
+			walkInfos = append(walkInfos, storagedriver.FileInfoInternal{
 				FileInfoFields: storagedriver.FileInfoFields{
 					IsDir:   false,
 					Size:    *file.Size,
 					ModTime: *file.LastModified,
-					Path:    strings.Replace(*file.Key, d.s3Path(""), prefix, 1),
+					Path:    filePath,
 				},
 			})
 		}
 
-		sort.SliceStable(walkInfos, func(i, j int) bool { return walkInfos[i].FileInfoFields.Path < walkInfos[j].FileInfoFields.Path })
-
 		for _, walkInfo := range walkInfos {
-			err := f(walkInfo)
-
-			if err == storagedriver.ErrSkipDir {
-				if walkInfo.IsDir() {
-					continue
-				} else {
-					break
-				}
-			} else if err != nil {
-				retError = err
-				return false
+			// skip any results under the last skip directory
+			if prevSkipDir != "" && strings.HasPrefix(walkInfo.Path(), prevSkipDir) {
+				continue
 			}
 
-			if walkInfo.IsDir() {
-				if err := d.doWalk(ctx, objectCount, *walkInfo.prefix, prefix, f); err != nil {
-					retError = err
+			err := f(walkInfo)
+			*objectCount++
+
+			if err != nil {
+				if err == storagedriver.ErrSkipDir {
+					if walkInfo.IsDir() {
+						prevSkipDir = walkInfo.Path()
+						continue
+					}
+					// is file, stop gracefully
 					return false
 				}
+				retError = err
+				return false
 			}
 		}
 		return true
@@ -1059,6 +1161,44 @@ func (d *driver) doWalk(parentCtx context.Context, objectCount *int64, path, pre
 	}
 
 	return nil
+}
+
+// directoryDiff finds all directories that are not in common between
+// the previous and current paths in sorted order.
+//
+// Eg 1 directoryDiff("/path/to/folder", "/path/to/folder/folder/file")
+//   => [ "/path/to/folder/folder" ],
+// Eg 2 directoryDiff("/path/to/folder/folder1", "/path/to/folder/folder2/file")
+//   => [ "/path/to/folder/folder2" ]
+// Eg 3 directoryDiff("/path/to/folder/folder1/file", "/path/to/folder/folder2/file")
+//  => [ "/path/to/folder/folder2" ]
+// Eg 4 directoryDiff("/path/to/folder/folder1/file", "/path/to/folder/folder2/folder1/file")
+//   => [ "/path/to/folder/folder2", "/path/to/folder/folder2/folder1" ]
+// Eg 5 directoryDiff("/", "/path/to/folder/folder/file")
+//   => [ "/path", "/path/to", "/path/to/folder", "/path/to/folder/folder" ],
+func directoryDiff(prev, current string) []string {
+	var paths []string
+
+	if prev == "" || current == "" {
+		return paths
+	}
+
+	parent := current
+	for {
+		parent = filepath.Dir(parent)
+		if parent == "/" || parent == prev || strings.HasPrefix(prev, parent) {
+			break
+		}
+		paths = append(paths, parent)
+	}
+	reverse(paths)
+	return paths
+}
+
+func reverse(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
 
 func (d *driver) s3Path(path string) string {
@@ -1351,7 +1491,7 @@ func (w *writer) flushPart() error {
 		// nothing to write
 		return nil
 	}
-	if len(w.pendingPart) < int(w.driver.ChunkSize) {
+	if w.driver.MultipartCombineSmallPart && len(w.pendingPart) < int(w.driver.ChunkSize) {
 		// closing with a small pending part
 		// combine ready and pending to avoid writing a small part
 		w.readyPart = append(w.readyPart, w.pendingPart...)
