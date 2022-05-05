@@ -14,6 +14,12 @@ import (
 	v1 "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
+var (
+	errInvalidArtifactType      = errors.New("artifactType invalid")
+	errInvalidMediaType         = errors.New("mediaType invalid")
+	errInvalidCreatedAnnotation = errors.New("failed to parse created time")
+)
+
 // artifactManifestHandler is a ManifestHandler that covers ORAS Artifacts.
 type artifactManifestHandler struct {
 	repository    distribution.Repository
@@ -77,17 +83,17 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 	var errs distribution.ErrManifestVerification
 
 	if dm.ArtifactType() == "" {
-		errs = append(errs, distribution.ErrManifestVerification{errors.New("artifactType invalid")})
+		errs = append(errs, errInvalidArtifactType)
 	}
 
 	if dm.MediaType() != v1.MediaTypeArtifactManifest {
-		errs = append(errs, distribution.ErrManifestVerification{errors.New("mediaType invalid")})
+		errs = append(errs, errInvalidMediaType)
 	}
 
 	if createdAt, ok := dm.Annotations()[createAnnotationName]; ok {
 		_, err := time.Parse(time.RFC3339, createdAt)
 		if err != nil {
-			errs = append(errs, distribution.ErrManifestVerification{errors.New("failed to parse created time: " + err.Error())})
+			errs = append(errs, errInvalidCreatedAnnotation)
 		}
 	}
 
