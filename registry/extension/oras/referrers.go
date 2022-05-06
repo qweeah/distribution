@@ -15,8 +15,8 @@ import (
 	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
-// referrersResponse describes the response body of the referrers API.
-type referrersResponse struct {
+// ReferrersResponse describes the response body of the referrers API.
+type ReferrersResponse struct {
 	Referrers []orasartifacts.Descriptor `json:"referrers"`
 }
 
@@ -94,17 +94,17 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 			referrers = referrers[startIndex:]
 		} else {
 			referrers = referrers[startIndex:(startIndex + nPage)]
-			var nextDgsts []string
 			// generate string list of digests for nextToken
-			for _, ref := range referrers[nPage-minPageSize:] {
-				nextDgsts = append(nextDgsts, ref.Digest.String())
+			var nextDgsts []string
+			for i := nPage - 1; i >= nPage-minPageSize; i-- {
+				nextDgsts = append(nextDgsts, referrers[i].Digest.String())
 			}
 			// add the Link Header
 			w.Header().Set("Link", generateLinkHeader(h.extContext.Repository.Named().Name(), h.Digest.String(), artifactType, nextDgsts, nPage))
 		}
 	}
 
-	response := referrersResponse{
+	response := ReferrersResponse{
 		Referrers: referrers,
 	}
 

@@ -29,6 +29,7 @@ import (
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
+	"github.com/distribution/distribution/v3/registry/extension/oras"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/testdriver"
@@ -36,6 +37,7 @@ import (
 	"github.com/docker/libtrust"
 	"github.com/gorilla/handlers"
 	"github.com/opencontainers/go-digest"
+	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 var headerConfig = http.Header{
@@ -1193,6 +1195,382 @@ func TestManifestDeleteDisabled(t *testing.T) {
 	env := newTestEnv(t, deleteEnabled)
 	defer env.Shutdown()
 	testManifestDeleteDisabled(t, env, schema1Repo)
+}
+
+func TestReferrers(t *testing.T) {
+	// generate configuration with oras extension
+	config := configuration.Configuration{
+		Storage: configuration.Storage{
+			"testdriver": configuration.Parameters{},
+			"delete":     configuration.Parameters{"enabled": true},
+			"maintenance": configuration.Parameters{"uploadpurging": map[interface{}]interface{}{
+				"enabled": false,
+			}},
+		},
+		Extensions: map[string]configuration.ExtensionConfig{
+			"oras": oras.OrasOptions{
+				ArtifactsExtComponents: []string{
+					"referrers",
+				},
+			},
+		},
+	}
+
+	config.HTTP.Headers = headerConfig
+	env := newTestEnvWithConfig(t, &config)
+	defer env.Shutdown()
+
+	// build subject manifest
+	imageNameRef, err := reference.WithName("subjectmanifest")
+	if err != nil {
+		t.Fatalf("unable to parse reference: %v", err)
+	}
+
+	artifactManifestTemplate, subjectManifestDigest := setupReferrersTests(t, env, imageNameRef)
+
+	// list of annotations for each artifact manifest to be pushed
+	annotations := []map[string]string{
+		{},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-20T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-24T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-23T17:03:05-07:00",
+		},
+	}
+
+	var expectedDigests []digest.Digest
+	// defines the correct sorted index order of the expected digests
+	digesIndexOrder := []int{2, 3, 1, 0}
+
+	for _, annotation := range annotations {
+		artifactManifestNew := artifactManifestTemplate
+		artifactManifestNew.Annotations = annotation
+		artifactDigest := pushArtifactManifest(t, env, imageNameRef, artifactManifestNew)
+		expectedDigests = append(expectedDigests, artifactDigest)
+	}
+
+	// get the referrers
+	baseURL, err := env.builder.BuildBaseURL()
+	if err != nil {
+		t.Fatalf("failed to extract base url: %v", err)
+	}
+	referrersURL := fmt.Sprintf(
+		"%ssubjectmanifest/_oras/artifacts/referrers?digest=%s&artifactType=%s",
+		baseURL,
+		subjectManifestDigest.String(),
+		"test_artifactType",
+	)
+
+	// GET referrers
+	resp, err := http.Get(referrersURL)
+	checkErr(t, err, "getting referrers")
+	checkResponse(t, "getting referrers", resp, http.StatusOK)
+	defer resp.Body.Close()
+
+	var referrersResp oras.ReferrersResponse
+	// decode body into referrers response
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&referrersResp); err != nil {
+		t.Fatalf("error decoding fetched referrers: %v", err)
+	}
+
+	// length of referrers response must match # of artifacts pushed
+	if len(referrersResp.Referrers) != len(annotations) {
+		t.Fatalf("expected referrers length to be %d, but got length %d", len(annotations), len(referrersResp.Referrers))
+	}
+
+	// each referrer returned should have digest equal to expected digest
+	for i, referrer := range referrersResp.Referrers {
+		expectedDigest := expectedDigests[digesIndexOrder[i]].String()
+		actualDigest := referrer.Digest.String()
+		if actualDigest != expectedDigest {
+			t.Fatalf("expected referrer with digest %s but got %s", expectedDigest, actualDigest)
+		}
+	}
+}
+
+func TestReferrersPagination(t *testing.T) {
+	// generate configuration with oras extension
+	config := configuration.Configuration{
+		Storage: configuration.Storage{
+			"testdriver": configuration.Parameters{},
+			"delete":     configuration.Parameters{"enabled": true},
+			"maintenance": configuration.Parameters{"uploadpurging": map[interface{}]interface{}{
+				"enabled": false,
+			}},
+		},
+		Extensions: map[string]configuration.ExtensionConfig{
+			"oras": oras.OrasOptions{
+				ArtifactsExtComponents: []string{
+					"referrers",
+				},
+			},
+		},
+	}
+
+	config.HTTP.Headers = headerConfig
+	env := newTestEnvWithConfig(t, &config)
+	defer env.Shutdown()
+
+	// build subject manifest
+	imageNameRef, err := reference.WithName("subjectmanifest")
+	if err != nil {
+		t.Fatalf("unable to parse reference: %v", err)
+	}
+
+	artifactManifestTemplate, subjectManifestDigest := setupReferrersTests(t, env, imageNameRef)
+
+	// list of annotations for each artifact manifest to be pushed
+	annotations := []map[string]string{
+		{},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-20T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-24T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-23T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-26T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-22T17:03:05-07:00",
+		},
+	}
+
+	var expectedDigests []digest.Digest
+	// defines the correct sorted index order of the expected digests
+	digesIndexOrder := []int{4, 2, 3, 5, 1, 0}
+
+	for _, annotation := range annotations {
+		artifactManifestNew := artifactManifestTemplate
+		artifactManifestNew.Annotations = annotation
+		artifactDigest := pushArtifactManifest(t, env, imageNameRef, artifactManifestNew)
+		expectedDigests = append(expectedDigests, artifactDigest)
+	}
+
+	// page size to use
+	nPage := 4
+	baseURL, err := env.builder.BuildBaseURL()
+	if err != nil {
+		t.Fatalf("failed to extract base url: %v", err)
+	}
+	referrersURL := fmt.Sprintf(
+		"%ssubjectmanifest/_oras/artifacts/referrers?digest=%s&artifactType=%s&n=%d",
+		baseURL,
+		subjectManifestDigest.String(),
+		"test_artifactType",
+		nPage,
+	)
+
+	// get the referrers
+	resp, err := http.Get(referrersURL)
+	checkErr(t, err, "getting referrers")
+	checkResponse(t, "getting referrers", resp, http.StatusOK)
+	defer resp.Body.Close()
+
+	var referrersResp oras.ReferrersResponse
+
+	// decode first page's body into referrers response
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&referrersResp); err != nil {
+		t.Fatalf("error decoding fetched referrers: %v", err)
+	}
+
+	// length of referrers should equal page size
+	if len(referrersResp.Referrers) != nPage {
+		t.Fatalf("expected referrers length to be %d, but got length %d", nPage, len(referrersResp.Referrers))
+	}
+
+	// each referrer's digest must match expected digest
+	for i, referrer := range referrersResp.Referrers {
+		expectedDigest := expectedDigests[digesIndexOrder[i]].String()
+		actualDigest := referrer.Digest.String()
+		if actualDigest != expectedDigest {
+			t.Fatalf("expected referrer with digest %s but got %s", expectedDigest, actualDigest)
+		}
+	}
+
+	// link must exist
+	link := resp.Header.Get("Link")
+	if link == "" {
+		t.Fatalf("referrers has less data than expected")
+	}
+
+	// generates expected nextToken based on oldest 3 digests returned
+	expectedNextToken := fmt.Sprintf("%s,%s,%s", expectedDigests[digesIndexOrder[3]], expectedDigests[digesIndexOrder[2]], expectedDigests[digesIndexOrder[1]])
+	// check Link has correct query parameters and return nextToken link
+	linkURL := checkReferrersLink(t, link, nPage, expectedNextToken, imageNameRef.Name())
+	// use nextToken link to generate absolute URL for next page request
+	nextPageURL := baseURL + strings.TrimPrefix(linkURL.String(), "/v2/")
+
+	// get page 2 referrers
+	resp, err = http.Get(nextPageURL)
+	checkErr(t, err, "getting referrers page 2")
+	checkResponse(t, "getting referrers page 2", resp, http.StatusOK)
+	defer resp.Body.Close()
+
+	// decode page 2 response body
+	dec = json.NewDecoder(resp.Body)
+	if err := dec.Decode(&referrersResp); err != nil {
+		t.Fatalf("error decoding fetched referrers page 2: %v", err)
+	}
+
+	// length of referrers must be equal the remainig items left in annotations
+	if len(referrersResp.Referrers) != len(annotations)-nPage {
+		t.Fatalf("expected referrers length to be %d, but got length %d", len(annotations)-nPage, len(referrersResp.Referrers))
+	}
+
+	// remaining referrers must have digest matching to expected digest
+	for i, referrer := range referrersResp.Referrers {
+		expectedDigest := expectedDigests[digesIndexOrder[nPage+i]].String()
+		actualDigest := referrer.Digest.String()
+		if actualDigest != expectedDigest {
+			t.Fatalf("expected referrer with digest %s but got %s", expectedDigest, actualDigest)
+		}
+	}
+
+	// link header should not exist
+	link = resp.Header.Get("Link")
+	if link != "" {
+		t.Fatalf("referrers has more data than expected")
+	}
+}
+
+func setupReferrersTests(t *testing.T, env *testEnv, imageNameRef reference.Named) (orasartifacts.Manifest, digest.Digest) {
+	// Push random layer
+	rs, dgst, err := testutil.CreateRandomTarFile()
+	if err != nil {
+		t.Fatalf("error creating random layer: %v", err)
+	}
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(rs)
+	uploadURLBase, _ := startPushLayer(t, env, imageNameRef)
+	pushLayer(t, env.builder, imageNameRef, dgst, uploadURLBase, bytes.NewReader(buf.Bytes()))
+	layerSize := buf.Len()
+
+	// Push a config, and reference it in the manifest
+	sampleConfig := []byte(`{
+		"architecture": "amd64",
+		"history": [
+		  {
+		    "created": "2015-10-31T22:22:54.690851953Z",
+		    "created_by": "/bin/sh -c #(nop) ADD file:a3bc1e842b69636f9df5256c49c5374fb4eef1e281fe3f282c65fb853ee171c5 in /"
+		  },
+		  {
+		    "created": "2015-10-31T22:22:55.613815829Z",
+		    "created_by": "/bin/sh -c #(nop) CMD [\"sh\"]"
+		  }
+		],
+		"rootfs": {
+		  "diff_ids": [
+		    "sha256:c6f988f4874bb0add23a778f753c65efe992244e148a1d2ec2a8b664fb66bbd1",
+		    "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+		  ],
+		  "type": "layers"
+		}
+	}`)
+	sampleConfigDigest := digest.FromBytes(sampleConfig)
+
+	uploadURLBaseConfig, _ := startPushLayer(t, env, imageNameRef)
+	pushLayer(t, env.builder, imageNameRef, sampleConfigDigest, uploadURLBaseConfig, bytes.NewReader(sampleConfig))
+
+	subjectManifest := schema2.Manifest{
+		Versioned: manifest.Versioned{
+			SchemaVersion: 2,
+			MediaType:     schema2.MediaTypeManifest,
+		},
+		Config: distribution.Descriptor{
+			MediaType: schema2.MediaTypeImageConfig,
+			Digest:    sampleConfigDigest,
+			Size:      int64(len(sampleConfig)),
+		},
+		Layers: []distribution.Descriptor{
+			{
+				MediaType: schema2.MediaTypeLayer,
+				Digest:    dgst,
+				Size:      int64(layerSize),
+			},
+		},
+	}
+
+	p, err := json.MarshalIndent(subjectManifest, "", "   ")
+	if err != nil {
+		t.Fatalf("failed to marshal subject manifest: %v", err)
+	}
+	dgst = digest.FromBytes(p)
+
+	// Create this repository by tag to ensure the tag mapping is made in the registry
+	tagRef, _ := reference.WithTag(imageNameRef, "test")
+	manifestDigestURL, err := env.builder.BuildManifestURL(tagRef)
+	checkErr(t, err, "building manifest url")
+
+	digestRef, _ := reference.WithDigest(imageNameRef, dgst)
+	location, err := env.builder.BuildManifestURL(digestRef)
+	checkErr(t, err, "building location URL")
+
+	// push subject manifest
+	resp := putManifest(t, "putting subject manifest", manifestDigestURL, schema2.MediaTypeManifest, subjectManifest)
+	checkResponse(t, "putting subject manifest", resp, http.StatusCreated)
+	checkHeaders(t, resp, http.Header{
+		"Location":              []string{location},
+		"Docker-Content-Digest": []string{dgst.String()},
+	})
+
+	// build artifact blob and push blob
+	artifactBlobDigest := digest.FromBytes([]byte{})
+	uploadURLBaseArtifact, _ := startPushLayer(t, env, imageNameRef)
+	pushLayer(t, env.builder, imageNameRef, artifactBlobDigest, uploadURLBaseArtifact, bytes.NewReader([]byte{}))
+
+	artifactBlobDescriptor := orasartifacts.Descriptor{
+		MediaType: orasartifacts.MediaTypeDescriptor,
+		Digest:    artifactBlobDigest,
+		Size:      0,
+	}
+
+	// build artifact manifest template
+	return orasartifacts.Manifest{
+		MediaType:    orasartifacts.MediaTypeArtifactManifest,
+		ArtifactType: "test_artifactType",
+		Blobs: []orasartifacts.Descriptor{
+			artifactBlobDescriptor,
+		},
+		Subject: orasartifacts.Descriptor{
+			MediaType: schema2.MediaTypeManifest,
+			Size:      int64(len(p)),
+			Digest:    dgst,
+		},
+		Annotations: map[string]string{
+			"io.cncf.oras.artifact.created": "2022-04-22T17:03:05-07:00",
+		},
+	}, dgst
+}
+
+func checkReferrersLink(t *testing.T, urlStr string, numEntries int, nextToken string, subjectName string) url.URL {
+	re := regexp.MustCompile("<(/v2/" + subjectName + "/_oras/artifacts/referrers.*)>; rel=\"next\"")
+	matches := re.FindStringSubmatch(urlStr)
+
+	if len(matches) != 2 {
+		t.Fatalf("Referrer link address response was incorrect")
+	}
+	linkURL, _ := url.Parse(matches[1])
+	urlValues := linkURL.Query()
+
+	if urlValues.Get("n") != strconv.Itoa(numEntries) {
+		t.Fatalf("Referrer link entry size is incorrect")
+	}
+
+	if urlValues.Get("nextToken") != nextToken {
+		t.Fatal("Referrer link last entry is incorrect")
+	}
+
+	return *linkURL
 }
 
 func testManifestDeleteDisabled(t *testing.T, env *testEnv, imageName reference.Named) {
@@ -2387,6 +2765,22 @@ func putManifest(t *testing.T, msg, url, contentType string, v interface{}) *htt
 	}
 
 	return resp
+}
+
+func pushArtifactManifest(t *testing.T, env *testEnv, imageNameRef reference.Named, artifactManifest orasartifacts.Manifest) digest.Digest {
+	// push artifact manifest
+	marshalledArtifact, err := json.MarshalIndent(artifactManifest, "", "   ")
+	if err != nil {
+		t.Fatalf("failed to marshal artifact manifest: %v", err)
+	}
+	artifactManifestDigest := digest.FromBytes(marshalledArtifact)
+	artifactDigestRef, _ := reference.WithDigest(imageNameRef, artifactManifestDigest)
+	artifactManifestURL, err := env.builder.BuildManifestURL(artifactDigestRef)
+	checkErr(t, err, "building artifact manifest URL")
+
+	resp := putManifest(t, "putting artifact manifest", artifactManifestURL, orasartifacts.MediaTypeArtifactManifest, artifactManifest)
+	checkResponse(t, "putting artifact manifest", resp, http.StatusCreated)
+	return artifactManifestDigest
 }
 
 func startPushLayer(t *testing.T, env *testEnv, name reference.Named) (location string, uuid string) {
