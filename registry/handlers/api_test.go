@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1553,8 +1554,13 @@ func setupReferrersTests(t *testing.T, env *testEnv, imageNameRef reference.Name
 }
 
 func checkReferrersLink(t *testing.T, urlStr string, numEntries int, nextToken string, subjectName string) url.URL {
+	decodedURLBytes, err := base64.URLEncoding.DecodeString(urlStr)
+	decodedURL := string(decodedURLBytes)
+	if err != nil {
+		t.Fatalf("Base64 decoding failed for nextToken: %v", err)
+	}
 	re := regexp.MustCompile("<(/v2/" + subjectName + "/_oras/artifacts/referrers.*)>; rel=\"next\"")
-	matches := re.FindStringSubmatch(urlStr)
+	matches := re.FindStringSubmatch(decodedURL)
 
 	if len(matches) != 2 {
 		t.Fatalf("Referrer link address response was incorrect")

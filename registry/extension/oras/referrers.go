@@ -1,6 +1,7 @@
 package oras
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,9 +31,10 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 
 	// This can be empty
 	artifactType := r.FormValue("artifactType")
-	nPage, err := strconv.Atoi(r.FormValue("n"))
-	// client specified nPage must be greater than min page size
-	if nPage < minPageSize || err != nil {
+	nPage, nParseError := strconv.Atoi(r.FormValue("n"))
+
+	// client specified nPage must be greater than min page size and less than or equal to max page size
+	if nParseError != nil || nPage < minPageSize || nPage > maxPageSize {
 		nPage = maxPageSize
 	}
 	nextToken := r.FormValue("nextToken")
@@ -40,7 +42,7 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 	if nextToken != "" {
 		nextTokenList := strings.Split(nextToken, ",")
 		for _, token := range nextTokenList {
-			_, err = digest.Parse(token)
+			_, err := digest.Parse(token)
 			if err != nil {
 				h.extContext.Errors = append(h.extContext.Errors, v2.ErrorCodeMalformedNextToken.WithDetail("nextToken parsing failed"))
 				return
@@ -99,6 +101,10 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 			for i := nPage - 1; i >= nPage-minPageSize; i-- {
 				nextDgsts = append(nextDgsts, referrers[i].Digest.String())
 			}
+			// if n was not provided in page, set nPage to a value so link header knows not to include n
+			if nParseError != nil {
+				nPage = -1
+			}
 			// add the Link Header
 			w.Header().Set("Link", generateLinkHeader(h.extContext.Repository.Named().Name(), h.Digest.String(), artifactType, nextDgsts, nPage))
 		}
@@ -118,11 +124,15 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 }
 
 func generateLinkHeader(repoName, subjectDigest, artifactType string, lastDigests []string, nPage int) string {
-	url := fmt.Sprintf("/v2/%s/_oras/artifacts/referrers?digest=%s&artifactType=%s&n=%d&nextToken=%s",
+	url := fmt.Sprintf("/v2/%s/_oras/artifacts/referrers?digest=%s&nextToken=%s",
 		repoName,
 		subjectDigest,
-		artifactType,
-		nPage,
 		strings.Join(lastDigests, ","))
-	return fmt.Sprintf("<%s>; rel=\"next\"", url)
+	if artifactType != "" {
+		url = fmt.Sprintf("%s&artifactType=%s", url, artifactType)
+	}
+	if nPage > 0 {
+		url = fmt.Sprintf("%s&n=%d", url, nPage)
+	}
+	return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("<%s>; rel=\"next\"", url)))
 }

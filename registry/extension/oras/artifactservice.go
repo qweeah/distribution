@@ -29,7 +29,7 @@ type referrersHandler struct {
 
 const createAnnotationName = "io.cncf.oras.artifact.created"
 
-func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, referrerType string) ([]artifactv1.Descriptor, error) {
+func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, artifactType string) ([]artifactv1.Descriptor, error) {
 	dcontext.GetLogger(ctx).Debug("(*manifestStore).Referrers")
 
 	var referrersUnsorted []artifactv1.Descriptor
@@ -55,8 +55,10 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 			return nil
 		}
 
-		// filtering by artifact type
-		if ArtifactMan.ArtifactType() == referrerType {
+		extractedArtifactType := ArtifactMan.ArtifactType()
+
+		// filtering by artifact type or bypass if no artifact type specified
+		if artifactType == "" || extractedArtifactType == artifactType {
 			desc, err := blobStatter.Stat(ctx, referrerRevision)
 			if err != nil {
 				return err
@@ -66,7 +68,7 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 				MediaType:    desc.MediaType,
 				Size:         desc.Size,
 				Digest:       desc.Digest,
-				ArtifactType: ArtifactMan.ArtifactType(),
+				ArtifactType: extractedArtifactType,
 				Annotations:  ArtifactMan.Annotations(),
 			}
 
