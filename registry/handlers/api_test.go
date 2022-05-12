@@ -1198,62 +1198,11 @@ func TestManifestDeleteDisabled(t *testing.T) {
 	testManifestDeleteDisabled(t, env, schema1Repo)
 }
 
-func TestReferrers(t *testing.T) {
-	// generate configuration with oras extension
-	config := configuration.Configuration{
-		Storage: configuration.Storage{
-			"testdriver": configuration.Parameters{},
-			"delete":     configuration.Parameters{"enabled": true},
-			"maintenance": configuration.Parameters{"uploadpurging": map[interface{}]interface{}{
-				"enabled": false,
-			}},
-		},
-		Extensions: map[string]configuration.ExtensionConfig{
-			"oras": oras.OrasOptions{
-				ArtifactsExtComponents: []string{
-					"referrers",
-				},
-			},
-		},
-	}
-
-	config.HTTP.Headers = headerConfig
-	env := newTestEnvWithConfig(t, &config)
-	defer env.Shutdown()
-
-	// build subject manifest
-	imageNameRef, err := reference.WithName("subjectmanifest")
-	if err != nil {
-		t.Fatalf("unable to parse reference: %v", err)
-	}
-
-	artifactManifestTemplate, subjectManifestDigest := setupReferrersTests(t, env, imageNameRef)
-
-	// list of annotations for each artifact manifest to be pushed
-	annotations := []map[string]string{
-		{},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-20T17:03:05-07:00",
-		},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-24T17:03:05-07:00",
-		},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-23T17:03:05-07:00",
-		},
-	}
-
-	var expectedDigests []digest.Digest
-	// defines the correct sorted index order of the expected digests
-	digesIndexOrder := []int{2, 3, 1, 0}
-
-	for _, annotation := range annotations {
-		artifactManifestNew := artifactManifestTemplate
-		artifactManifestNew.Annotations = annotation
-		artifactDigest := pushArtifactManifest(t, env, imageNameRef, artifactManifestNew)
-		expectedDigests = append(expectedDigests, artifactDigest)
-	}
-
+func testReferrersNoPagination(t *testing.T,
+	env *testEnv,
+	subjectManifestDigest digest.Digest,
+	expectedDigests []digest.Digest,
+	digestIndexOrder []int) {
 	// get the referrers
 	baseURL, err := env.builder.BuildBaseURL()
 	if err != nil {
@@ -1280,13 +1229,13 @@ func TestReferrers(t *testing.T) {
 	}
 
 	// length of referrers response must match # of artifacts pushed
-	if len(referrersResp.Referrers) != len(annotations) {
-		t.Fatalf("expected referrers length to be %d, but got length %d", len(annotations), len(referrersResp.Referrers))
+	if len(referrersResp.Referrers) != len(expectedDigests) {
+		t.Fatalf("expected referrers length to be %d, but got length %d", len(expectedDigests), len(referrersResp.Referrers))
 	}
 
 	// each referrer returned should have digest equal to expected digest
 	for i, referrer := range referrersResp.Referrers {
-		expectedDigest := expectedDigests[digesIndexOrder[i]].String()
+		expectedDigest := expectedDigests[digestIndexOrder[i]].String()
 		actualDigest := referrer.Digest.String()
 		if actualDigest != expectedDigest {
 			t.Fatalf("expected referrer with digest %s but got %s", expectedDigest, actualDigest)
@@ -1294,68 +1243,11 @@ func TestReferrers(t *testing.T) {
 	}
 }
 
-func TestReferrersPagination(t *testing.T) {
-	// generate configuration with oras extension
-	config := configuration.Configuration{
-		Storage: configuration.Storage{
-			"testdriver": configuration.Parameters{},
-			"delete":     configuration.Parameters{"enabled": true},
-			"maintenance": configuration.Parameters{"uploadpurging": map[interface{}]interface{}{
-				"enabled": false,
-			}},
-		},
-		Extensions: map[string]configuration.ExtensionConfig{
-			"oras": oras.OrasOptions{
-				ArtifactsExtComponents: []string{
-					"referrers",
-				},
-			},
-		},
-	}
-
-	config.HTTP.Headers = headerConfig
-	env := newTestEnvWithConfig(t, &config)
-	defer env.Shutdown()
-
-	// build subject manifest
-	imageNameRef, err := reference.WithName("subjectmanifest")
-	if err != nil {
-		t.Fatalf("unable to parse reference: %v", err)
-	}
-
-	artifactManifestTemplate, subjectManifestDigest := setupReferrersTests(t, env, imageNameRef)
-
-	// list of annotations for each artifact manifest to be pushed
-	annotations := []map[string]string{
-		{},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-20T17:03:05-07:00",
-		},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-24T17:03:05-07:00",
-		},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-23T17:03:05-07:00",
-		},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-26T17:03:05-07:00",
-		},
-		{
-			"io.cncf.oras.artifact.created": "2022-04-22T17:03:05-07:00",
-		},
-	}
-
-	var expectedDigests []digest.Digest
-	// defines the correct sorted index order of the expected digests
-	digesIndexOrder := []int{4, 2, 3, 5, 1, 0}
-
-	for _, annotation := range annotations {
-		artifactManifestNew := artifactManifestTemplate
-		artifactManifestNew.Annotations = annotation
-		artifactDigest := pushArtifactManifest(t, env, imageNameRef, artifactManifestNew)
-		expectedDigests = append(expectedDigests, artifactDigest)
-	}
-
+func testReferrersPagination(t *testing.T, env *testEnv,
+	subjectManifestDigest digest.Digest,
+	subjectManifestName string,
+	expectedDigests []digest.Digest,
+	digestIndexOrder []int) {
 	// page size to use
 	nPage := 4
 	baseURL, err := env.builder.BuildBaseURL()
@@ -1391,7 +1283,7 @@ func TestReferrersPagination(t *testing.T) {
 
 	// each referrer's digest must match expected digest
 	for i, referrer := range referrersResp.Referrers {
-		expectedDigest := expectedDigests[digesIndexOrder[i]].String()
+		expectedDigest := expectedDigests[digestIndexOrder[i]].String()
 		actualDigest := referrer.Digest.String()
 		if actualDigest != expectedDigest {
 			t.Fatalf("expected referrer with digest %s but got %s", expectedDigest, actualDigest)
@@ -1405,9 +1297,9 @@ func TestReferrersPagination(t *testing.T) {
 	}
 
 	// generates expected nextToken based on oldest 3 digests returned
-	expectedNextToken := fmt.Sprintf("%s,%s,%s", expectedDigests[digesIndexOrder[3]], expectedDigests[digesIndexOrder[2]], expectedDigests[digesIndexOrder[1]])
+	expectedNextToken := fmt.Sprintf("%s,%s,%s", expectedDigests[digestIndexOrder[3]], expectedDigests[digestIndexOrder[2]], expectedDigests[digestIndexOrder[1]])
 	// check Link has correct query parameters and return nextToken link
-	linkURL := checkReferrersLink(t, link, nPage, expectedNextToken, imageNameRef.Name())
+	linkURL := checkReferrersLink(t, link, nPage, expectedNextToken, subjectManifestName)
 	// use nextToken link to generate absolute URL for next page request
 	nextPageURL := baseURL + strings.TrimPrefix(linkURL.String(), "/v2/")
 
@@ -1423,14 +1315,14 @@ func TestReferrersPagination(t *testing.T) {
 		t.Fatalf("error decoding fetched referrers page 2: %v", err)
 	}
 
-	// length of referrers must be equal the remainig items left in annotations
-	if len(referrersResp.Referrers) != len(annotations)-nPage {
-		t.Fatalf("expected referrers length to be %d, but got length %d", len(annotations)-nPage, len(referrersResp.Referrers))
+	// length of referrers must be equal the remaining items left in annotations
+	if len(referrersResp.Referrers) != len(expectedDigests)-nPage {
+		t.Fatalf("expected referrers length to be %d, but got length %d", len(expectedDigests)-nPage, len(referrersResp.Referrers))
 	}
 
 	// remaining referrers must have digest matching to expected digest
 	for i, referrer := range referrersResp.Referrers {
-		expectedDigest := expectedDigests[digesIndexOrder[nPage+i]].String()
+		expectedDigest := expectedDigests[digestIndexOrder[nPage+i]].String()
 		actualDigest := referrer.Digest.String()
 		if actualDigest != expectedDigest {
 			t.Fatalf("expected referrer with digest %s but got %s", expectedDigest, actualDigest)
@@ -1444,7 +1336,35 @@ func TestReferrersPagination(t *testing.T) {
 	}
 }
 
-func setupReferrersTests(t *testing.T, env *testEnv, imageNameRef reference.Named) (orasartifacts.Manifest, digest.Digest) {
+func TestReferrers(t *testing.T) {
+	// generate configuration with oras extension
+	config := configuration.Configuration{
+		Storage: configuration.Storage{
+			"testdriver": configuration.Parameters{},
+			"delete":     configuration.Parameters{"enabled": true},
+			"maintenance": configuration.Parameters{"uploadpurging": map[interface{}]interface{}{
+				"enabled": false,
+			}},
+		},
+		Extensions: map[string]configuration.ExtensionConfig{
+			"oras": oras.OrasOptions{
+				ArtifactsExtComponents: []string{
+					"referrers",
+				},
+			},
+		},
+	}
+
+	config.HTTP.Headers = headerConfig
+	env := newTestEnvWithConfig(t, &config)
+	defer env.Shutdown()
+
+	// build subject manifest
+	imageNameRef, err := reference.WithName("subjectmanifest")
+	if err != nil {
+		t.Fatalf("unable to parse reference: %v", err)
+	}
+
 	// Push random layer
 	rs, dgst, err := testutil.CreateRandomTarFile()
 	if err != nil {
@@ -1536,7 +1456,7 @@ func setupReferrersTests(t *testing.T, env *testEnv, imageNameRef reference.Name
 	}
 
 	// build artifact manifest template
-	return orasartifacts.Manifest{
+	artifactManifestTemplate := orasartifacts.Manifest{
 		MediaType:    orasartifacts.MediaTypeArtifactManifest,
 		ArtifactType: "test_artifactType",
 		Blobs: []orasartifacts.Descriptor{
@@ -1550,7 +1470,42 @@ func setupReferrersTests(t *testing.T, env *testEnv, imageNameRef reference.Name
 		Annotations: map[string]string{
 			"io.cncf.oras.artifact.created": "2022-04-22T17:03:05-07:00",
 		},
-	}, dgst
+	}
+	subjectManifestDigest := dgst
+
+	// list of annotations for each artifact manifest to be pushed
+	annotations := []map[string]string{
+		{},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-20T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-24T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-23T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-26T17:03:05-07:00",
+		},
+		{
+			"io.cncf.oras.artifact.created": "2022-04-22T17:03:05-07:00",
+		},
+	}
+
+	var expectedDigests []digest.Digest
+	// defines the correct sorted index order of the expected digests
+	digestIndexOrder := []int{4, 2, 3, 5, 1, 0}
+
+	for _, annotation := range annotations {
+		artifactManifestNew := artifactManifestTemplate
+		artifactManifestNew.Annotations = annotation
+		artifactDigest := pushArtifactManifest(t, env, imageNameRef, artifactManifestNew)
+		expectedDigests = append(expectedDigests, artifactDigest)
+	}
+
+	testReferrersNoPagination(t, env, subjectManifestDigest, expectedDigests, digestIndexOrder)
+	testReferrersPagination(t, env, subjectManifestDigest, imageNameRef.Name(), expectedDigests, digestIndexOrder)
 }
 
 func checkReferrersLink(t *testing.T, urlStr string, numEntries int, nextToken string, subjectName string) url.URL {
