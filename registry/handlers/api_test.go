@@ -1298,6 +1298,8 @@ func testReferrersPagination(t *testing.T, env *testEnv,
 
 	// generates expected nextToken based on oldest 3 digests returned
 	expectedNextToken := fmt.Sprintf("%s,%s,%s", expectedDigests[digestIndexOrder[3]], expectedDigests[digestIndexOrder[2]], expectedDigests[digestIndexOrder[1]])
+	// base64 encode expected next token
+	expectedNextToken = base64.RawURLEncoding.EncodeToString([]byte(expectedNextToken))
 	// check Link has correct query parameters and return nextToken link
 	linkURL := checkReferrersLink(t, link, nPage, expectedNextToken, subjectManifestName)
 	// use nextToken link to generate absolute URL for next page request
@@ -1509,13 +1511,8 @@ func TestReferrers(t *testing.T) {
 }
 
 func checkReferrersLink(t *testing.T, urlStr string, numEntries int, nextToken string, subjectName string) url.URL {
-	decodedURLBytes, err := base64.URLEncoding.DecodeString(urlStr)
-	decodedURL := string(decodedURLBytes)
-	if err != nil {
-		t.Fatalf("Base64 decoding failed for nextToken: %v", err)
-	}
 	re := regexp.MustCompile("<(/v2/" + subjectName + "/_oras/artifacts/referrers.*)>; rel=\"next\"")
-	matches := re.FindStringSubmatch(decodedURL)
+	matches := re.FindStringSubmatch(urlStr)
 
 	if len(matches) != 2 {
 		t.Fatalf("Referrer link address response was incorrect")

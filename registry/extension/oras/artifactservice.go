@@ -28,6 +28,7 @@ type referrersHandler struct {
 }
 
 const createAnnotationName = "io.cncf.oras.artifact.created"
+const createAnnotationTimestampFormat = time.RFC3339
 
 func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, artifactType string) ([]artifactv1.Descriptor, error) {
 	dcontext.GetLogger(ctx).Debug("(*manifestStore).Referrers")
@@ -91,8 +92,8 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 
 	// sort the list of descriptors that contain the created annotation
 	sort.Slice(referrersSorted, func(i, j int) bool {
-		firstElem, _ := time.Parse(time.RFC3339, referrersSorted[i].Annotations[createAnnotationName])
-		secondElem, _ := time.Parse(time.RFC3339, referrersSorted[j].Annotations[createAnnotationName])
+		firstElem, _ := time.Parse(createAnnotationTimestampFormat, referrersSorted[i].Annotations[createAnnotationName])
+		secondElem, _ := time.Parse(createAnnotationTimestampFormat, referrersSorted[j].Annotations[createAnnotationName])
 		// most recent artifact first
 		return firstElem.After(secondElem)
 	})

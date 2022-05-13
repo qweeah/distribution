@@ -40,7 +40,13 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 	nextToken := r.FormValue("nextToken")
 	nextTokenMap := make(map[string]string)
 	if nextToken != "" {
-		nextTokenList := strings.Split(nextToken, ",")
+		// base64 decode nextToken to string
+		nextTokenDecoded, err := base64.RawURLEncoding.DecodeString(nextToken)
+		if err != nil {
+			h.extContext.Errors = append(h.extContext.Errors, v2.ErrorCodeMalformedNextToken.WithDetail("nextToken base64 decoding failed"))
+			return
+		}
+		nextTokenList := strings.Split(string(nextTokenDecoded), ",")
 		for _, token := range nextTokenList {
 			_, err := digest.Parse(token)
 			if err != nil {
@@ -96,7 +102,7 @@ func (h *referrersHandler) getReferrers(w http.ResponseWriter, r *http.Request) 
 			referrers = referrers[startIndex:]
 		} else {
 			referrers = referrers[startIndex:(startIndex + nPage)]
-			// generate string list of digests for nextToken
+			// nextToken is a base64 encoded comma-seperated string of the digests of the last three referrers in the response
 			var nextDgsts []string
 			for i := nPage - 1; i >= nPage-minPageSize; i-- {
 				nextDgsts = append(nextDgsts, referrers[i].Digest.String())
@@ -127,12 +133,12 @@ func generateLinkHeader(repoName, subjectDigest, artifactType string, lastDigest
 	url := fmt.Sprintf("/v2/%s/_oras/artifacts/referrers?digest=%s&nextToken=%s",
 		repoName,
 		subjectDigest,
-		strings.Join(lastDigests, ","))
+		base64.RawURLEncoding.EncodeToString([]byte(strings.Join(lastDigests, ","))))
 	if artifactType != "" {
 		url = fmt.Sprintf("%s&artifactType=%s", url, artifactType)
 	}
 	if nPage > 0 {
 		url = fmt.Sprintf("%s&n=%d", url, nPage)
 	}
-	return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("<%s>; rel=\"next\"", url)))
+	return fmt.Sprintf("<%s>; rel=\"next\"", url)
 }
