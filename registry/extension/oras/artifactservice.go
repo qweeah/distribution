@@ -2,6 +2,7 @@ package oras
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"sort"
 	"time"
@@ -27,6 +28,11 @@ type referrersHandler struct {
 	Digest digest.Digest
 }
 
+type referrersSortedWrapper struct {
+	createdAt  time.Time
+	descriptor artifactv1.Descriptor
+}
+
 const createAnnotationName = "io.cncf.oras.artifact.created"
 const createAnnotationTimestampFormat = time.RFC3339
 
@@ -35,6 +41,7 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 
 	var referrersUnsorted []artifactv1.Descriptor
 	var referrersSorted []artifactv1.Descriptor
+	var referrersWrappers []referrersSortedWrapper
 
 	repo := h.extContext.Repository
 	manifests, err := repo.Manifests(ctx)
@@ -70,13 +77,19 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 				Size:         desc.Size,
 				Digest:       desc.Digest,
 				ArtifactType: extractedArtifactType,
-				Annotations:  ArtifactMan.Annotations(),
 			}
 
-			if _, ok := artifactDesc.Annotations[createAnnotationName]; !ok {
+			if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
 				referrersUnsorted = append(referrersUnsorted, artifactDesc)
 			} else {
-				referrersSorted = append(referrersSorted, artifactDesc)
+				extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+				if err != nil {
+					return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
+				}
+				referrersWrappers = append(referrersWrappers, referrersSortedWrapper{
+					createdAt:  extractedTimestamp,
+					descriptor: artifactDesc,
+				})
 			}
 		}
 		return nil
@@ -91,12 +104,14 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 	}
 
 	// sort the list of descriptors that contain the created annotation
-	sort.Slice(referrersSorted, func(i, j int) bool {
-		firstElem, _ := time.Parse(createAnnotationTimestampFormat, referrersSorted[i].Annotations[createAnnotationName])
-		secondElem, _ := time.Parse(createAnnotationTimestampFormat, referrersSorted[j].Annotations[createAnnotationName])
+	sort.Slice(referrersWrappers, func(i, j int) bool {
 		// most recent artifact first
-		return firstElem.After(secondElem)
+		return referrersWrappers[i].createdAt.After(referrersWrappers[j].createdAt)
 	})
+	// extract the artifact descriptor from the sorting wrapper
+	for _, wrapper := range referrersWrappers {
+		referrersSorted = append(referrersSorted, wrapper.descriptor)
+	}
 	// append the descriptors, which don't have a created annotation, to the end
 	referrersSorted = append(referrersSorted, referrersUnsorted...)
 	return referrersSorted, nil
