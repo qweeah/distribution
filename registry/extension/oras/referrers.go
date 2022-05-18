@@ -21,7 +21,7 @@ type ReferrersResponse struct {
 	Referrers []orasartifacts.Descriptor `json:"referrers"`
 }
 
-const maxPageSize = 50
+const maxPageSize = 100
 
 // minimum page size used for # of digests to put in nextToken
 const minPageSize = 3
