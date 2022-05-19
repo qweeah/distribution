@@ -154,4 +154,14 @@ var (
 		to return) is not an integer, or "n" is negative.`,
 		HTTPStatusCode: http.StatusBadRequest,
 	})
+
+	// ErrorCodeMalformedNextToken is returned when uploading a blob if the
+	// provided digest does not match the blob contents.
+	ErrorCodeMalformedNextToken = errcode.Register(errGroup, errcode.ErrorDescriptor{
+		Value:   "MALFORMED_NEXTTOKEN",
+		Message: "provided nextToken is invalid",
+		Description: `Returned if a client provides a non-empty nextToken value that
+		cannot be properly parsed`,
+		HTTPStatusCode: http.StatusBadRequest,
+	})
 )

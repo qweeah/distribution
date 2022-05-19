@@ -2,7 +2,10 @@ package oras
 
 import (
 	"context"
+	"fmt"
 	"path"
+	"sort"
+	"time"
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -25,10 +28,20 @@ type referrersHandler struct {
 	Digest digest.Digest
 }
 
-func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, referrerType string) ([]artifactv1.Descriptor, error) {
+type referrersSortedWrapper struct {
+	createdAt  time.Time
+	descriptor artifactv1.Descriptor
+}
+
+const createAnnotationName = "io.cncf.oras.artifact.created"
+const createAnnotationTimestampFormat = time.RFC3339
+
+func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, artifactType string) ([]artifactv1.Descriptor, error) {
 	dcontext.GetLogger(ctx).Debug("(*manifestStore).Referrers")
 
-	var referrers []artifactv1.Descriptor
+	var referrersUnsorted []artifactv1.Descriptor
+	var referrersSorted []artifactv1.Descriptor
+	var referrersWrappers []referrersSortedWrapper
 
 	repo := h.extContext.Repository
 	manifests, err := repo.Manifests(ctx)
@@ -50,17 +63,35 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 			return nil
 		}
 
-		desc, err := blobStatter.Stat(ctx, referrerRevision)
-		if err != nil {
-			return err
+		extractedArtifactType := ArtifactMan.ArtifactType()
+
+		// filtering by artifact type or bypass if no artifact type specified
+		if artifactType == "" || extractedArtifactType == artifactType {
+			desc, err := blobStatter.Stat(ctx, referrerRevision)
+			if err != nil {
+				return err
+			}
+			desc.MediaType, _, _ = man.Payload()
+			artifactDesc := artifactv1.Descriptor{
+				MediaType:    desc.MediaType,
+				Size:         desc.Size,
+				Digest:       desc.Digest,
+				ArtifactType: extractedArtifactType,
+			}
+
+			if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
+				referrersUnsorted = append(referrersUnsorted, artifactDesc)
+			} else {
+				extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+				if err != nil {
+					return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
+				}
+				referrersWrappers = append(referrersWrappers, referrersSortedWrapper{
+					createdAt:  extractedTimestamp,
+					descriptor: artifactDesc,
+				})
+			}
 		}
-		desc.MediaType, _, _ = man.Payload()
-		referrers = append(referrers, artifactv1.Descriptor{
-			MediaType:    desc.MediaType,
-			Size:         desc.Size,
-			Digest:       desc.Digest,
-			ArtifactType: ArtifactMan.ArtifactType(),
-		})
 		return nil
 	})
 
@@ -72,7 +103,18 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 		return nil, err
 	}
 
-	return referrers, nil
+	// sort the list of descriptors that contain the created annotation
+	sort.Slice(referrersWrappers, func(i, j int) bool {
+		// most recent artifact first
+		return referrersWrappers[i].createdAt.After(referrersWrappers[j].createdAt)
+	})
+	// extract the artifact descriptor from the sorting wrapper
+	for _, wrapper := range referrersWrappers {
+		referrersSorted = append(referrersSorted, wrapper.descriptor)
+	}
+	// append the descriptors, which don't have a created annotation, to the end
+	referrersSorted = append(referrersSorted, referrersUnsorted...)
+	return referrersSorted, nil
 }
 func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath string, ingestor func(digest.Digest) error) error {
 	blobStatter := h.extContext.Registry.BlobStatter()
