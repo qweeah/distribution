@@ -51,6 +51,7 @@ func (v Vacuum) RemoveBlob(dgst string) error {
 }
 
 // RemoveManifest removes a manifest from the filesystem
+// Removes manifest's ref folder if it exists
 func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) error {
 	// remove a tag manifest reference, in case of not found continue to next one
 	for _, tag := range tags {
@@ -81,7 +82,26 @@ func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) e
 		return err
 	}
 	dcontext.GetLogger(v.ctx).Infof("deleting manifest: %s", manifestPath)
-	return v.driver.Delete(v.ctx, manifestPath)
+	err = v.driver.Delete(v.ctx, manifestPath)
+	if err != nil {
+		return err
+	}
+
+	referrerRootPath, err := pathFor(referrersRootPathSpec{name: name})
+	if err != nil {
+		return err
+	}
+	fullArtifactManifestPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
+	dcontext.GetLogger(v.ctx).Infof("deleting manifest ref folder: %s", fullArtifactManifestPath)
+	v.driver.Delete(v.ctx, fullArtifactManifestPath)
+	if err != nil {
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // RemoveRepository removes a repository directory from the
@@ -98,5 +118,35 @@ func (v Vacuum) RemoveRepository(repoName string) error {
 		return err
 	}
 
+	return nil
+}
+
+// RemoveArtifactManifest removes a artifact manifest from the filesystem
+// Removes manifest revision file and manifest ref folder if it exists
+func (v Vacuum) RemoveArtifactManifest(name string, artifactDgst digest.Digest) error {
+	manifestPath, err := pathFor(manifestRevisionPathSpec{name: name, revision: artifactDgst})
+	if err != nil {
+		return err
+	}
+	dcontext.GetLogger(v.ctx).Infof("deleting artifact manifest: %s", manifestPath)
+	err = v.driver.Delete(v.ctx, manifestPath)
+	if err != nil {
+		return err
+	}
+
+	referrerRootPath, err := pathFor(referrersRootPathSpec{name: name})
+	if err != nil {
+		return err
+	}
+	fullArtifactManifestPath := path.Join(referrerRootPath, artifactDgst.Algorithm().String(), artifactDgst.Hex())
+	dcontext.GetLogger(v.ctx).Infof("deleting artifact manifest ref: %s", fullArtifactManifestPath)
+	err = v.driver.Delete(v.ctx, fullArtifactManifestPath)
+	if err != nil {
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
+		}
+		return err
+	}
 	return nil
 }

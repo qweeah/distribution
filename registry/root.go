@@ -5,6 +5,7 @@ import (
 	"os"
 
 	dcontext "github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/registry/extension"
 	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	"github.com/distribution/distribution/v3/version"
@@ -71,7 +72,24 @@ var GCCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		registry, err := storage.NewRegistry(ctx, driver, storage.Schema1SigningKey(k))
+		extensions := config.Extensions
+		extensionNamespaces := []extension.Namespace{}
+		for key, options := range extensions {
+			ns, err := extension.Get(ctx, key, driver, options)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "unable to configure extension namespace (%s): %s", key, err)
+				os.Exit(1)
+			}
+			extensionNamespaces = append(extensionNamespaces, ns)
+		}
+
+		options := []storage.RegistryOption{storage.Schema1SigningKey(k)}
+		// add the extended storage for every namespace to the new registry options
+		for _, ns := range extensionNamespaces {
+			options = append(options, storage.AddExtendedStorage(ns))
+		}
+
+		registry, err := storage.NewRegistry(ctx, driver, options...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to construct registry: %v", err)
 			os.Exit(1)

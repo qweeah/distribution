@@ -3,11 +3,13 @@ package storage
 import (
 	"context"
 	"fmt"
+	"path"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 func emit(format string, a ...interface{}) {
@@ -27,6 +29,12 @@ type ManifestDel struct {
 	Tags   []string
 }
 
+// ArtifactManifestDel contains artifact manifest structure which will be deleted
+type ArtifactManifestDel struct {
+	Name           string
+	ArtifactDigest digest.Digest
+}
+
 // MarkAndSweep performs a mark and sweep of registry data
 func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, registry distribution.Namespace, opts GCOpts) error {
 	repositoryEnumerator, ok := registry.(distribution.RepositoryEnumerator)
@@ -37,6 +45,7 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 	// mark
 	markSet := make(map[digest.Digest]struct{})
 	manifestArr := make([]ManifestDel, 0)
+	artifactManifestIndex := make(map[digest.Digest]ArtifactManifestDel)
 	err := repositoryEnumerator.Enumerate(ctx, func(repoName string) error {
 		emit(repoName)
 
@@ -61,6 +70,28 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 		}
 
 		err = manifestEnumerator.Enumerate(ctx, func(dgst digest.Digest) error {
+			manifest, err := manifestService.Get(ctx, dgst)
+			if err != nil {
+				return fmt.Errorf("failed to retrieve manifest for digest %v: %v", dgst, err)
+			}
+
+			mediaType, _, err := manifest.Payload()
+			if err != nil {
+				return err
+			}
+
+			// if the manifest is an oras artifact, skip it
+			// the artifact marking occurs when walking the refs
+			if mediaType == v1.MediaTypeArtifactManifest {
+				return nil
+			}
+
+			blobStatter := registry.BlobStatter()
+			referrerRootPath, err := pathFor(referrersRootPathSpec{name: repository.Named().Name()})
+			if err != nil {
+				return err
+			}
+
 			if opts.RemoveUntagged {
 				// fetch all tags where this manifest is the latest one
 				tags, err := repository.Tags(ctx).Lookup(ctx, distribution.Descriptor{Digest: dgst})
@@ -77,6 +108,26 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 						return fmt.Errorf("failed to retrieve tags %v", err)
 					}
 					manifestArr = append(manifestArr, ManifestDel{Name: repoName, Digest: dgst, Tags: allTags})
+
+					// find all artifacts linked to manifest and add to artifactManifestIndex for subsequent deletion
+					rootPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
+					err = EnumerateReferrerLinks(ctx,
+						rootPath,
+						storageDriver,
+						blobStatter,
+						manifestService,
+						repository.Named().Name(),
+						markSet,
+						artifactManifestIndex,
+						artifactSweepIngestor)
+
+					if err != nil {
+						switch err.(type) {
+						case driver.PathNotFoundError:
+							return nil
+						}
+						return err
+					}
 					return nil
 				}
 			}
@@ -84,17 +135,31 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 			emit("%s: marking manifest %s ", repoName, dgst)
 			markSet[dgst] = struct{}{}
 
-			manifest, err := manifestService.Get(ctx, dgst)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve manifest for digest %v: %v", dgst, err)
-			}
-
 			descriptors := manifest.References()
 			for _, descriptor := range descriptors {
 				markSet[descriptor.Digest] = struct{}{}
 				emit("%s: marking blob %s", repoName, descriptor.Digest)
 			}
 
+			// recurse child artifact as subject to find lower level referrers
+			rootPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
+			err = EnumerateReferrerLinks(ctx,
+				rootPath,
+				storageDriver,
+				blobStatter,
+				manifestService,
+				repository.Named().Name(),
+				markSet,
+				artifactManifestIndex,
+				artifactMarkIngestor)
+
+			if err != nil {
+				switch err.(type) {
+				case driver.PathNotFoundError:
+					return nil
+				}
+				return err
+			}
 			return nil
 		})
 
@@ -123,6 +188,13 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 				return fmt.Errorf("failed to delete manifest %s: %v", obj.Digest, err)
 			}
 		}
+		// remove each artifact in the index
+		for artifactDigest, obj := range artifactManifestIndex {
+			err = vacuum.RemoveArtifactManifest(obj.Name, artifactDigest)
+			if err != nil {
+				return fmt.Errorf("failed to delete artifact manifest %s: %v", artifactDigest, err)
+			}
+		}
 	}
 	blobService := registry.Blobs()
 	deleteSet := make(map[digest.Digest]struct{})
@@ -149,4 +221,76 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 	}
 
 	return err
+}
+
+// ingestor method used in EnumerateReferrerLinks
+// marks each artifact manifest and associated blobs
+func artifactMarkIngestor(ctx context.Context,
+	referrerRevision digest.Digest,
+	manifestService distribution.ManifestService,
+	markSet map[digest.Digest]struct{},
+	artifactManifestIndex map[digest.Digest]ArtifactManifestDel,
+	repoName string,
+	storageDriver driver.StorageDriver,
+	blobStatter distribution.BlobStatter) error {
+	man, err := manifestService.Get(ctx, referrerRevision)
+	if err != nil {
+		return err
+	}
+
+	// mark the artifact manifest blob
+	emit("%s: marking artifact manifest %s ", repoName, referrerRevision.String())
+	markSet[referrerRevision] = struct{}{}
+
+	// mark the artifact blobs
+	descriptors := man.References()
+	for _, descriptor := range descriptors {
+		markSet[descriptor.Digest] = struct{}{}
+		emit("%s: marking blob %s", repoName, descriptor.Digest)
+	}
+	referrerRootPath, err := pathFor(referrersRootPathSpec{name: repoName})
+	if err != nil {
+		return err
+	}
+	rootPath := path.Join(referrerRootPath, referrerRevision.Algorithm().String(), referrerRevision.Hex())
+	_, err = storageDriver.Stat(ctx, rootPath)
+	if err != nil {
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
+		}
+		return err
+	}
+	return EnumerateReferrerLinks(ctx, rootPath, storageDriver, blobStatter, manifestService, repoName, markSet, artifactManifestIndex, artifactMarkIngestor)
+}
+
+// ingestor method used in EnumerateReferrerLinks
+// indexes each artifact manifest and adds ArtifactManifestDel struct to index
+func artifactSweepIngestor(ctx context.Context,
+	referrerRevision digest.Digest,
+	manifestService distribution.ManifestService,
+	markSet map[digest.Digest]struct{},
+	artifactManifestIndex map[digest.Digest]ArtifactManifestDel,
+	repoName string,
+	storageDriver driver.StorageDriver,
+	blobStatter distribution.BlobStatter) error {
+
+	// index the manifest
+	emit("%s: indexing artifact manifest %s ", repoName, referrerRevision.String())
+	artifactManifestIndex[referrerRevision] = ArtifactManifestDel{Name: repoName, ArtifactDigest: referrerRevision}
+
+	referrerRootPath, err := pathFor(referrersRootPathSpec{name: repoName})
+	if err != nil {
+		return err
+	}
+	rootPath := path.Join(referrerRootPath, referrerRevision.Algorithm().String(), referrerRevision.Hex())
+	_, err = storageDriver.Stat(ctx, rootPath)
+	if err != nil {
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
+		}
+		return err
+	}
+	return EnumerateReferrerLinks(ctx, rootPath, storageDriver, blobStatter, manifestService, repoName, markSet, artifactManifestIndex, artifactMarkIngestor)
 }

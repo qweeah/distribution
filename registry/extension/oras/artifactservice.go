@@ -10,6 +10,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry/extension"
+	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -51,49 +52,64 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 
 	blobStatter := h.extContext.Registry.BlobStatter()
 	rootPath := path.Join(referrersLinkPath(repo.Named().Name()), revision.Algorithm().String(), revision.Hex())
-	err = h.enumerateReferrerLinks(ctx, rootPath, func(referrerRevision digest.Digest) error {
-		man, err := manifests.Get(ctx, referrerRevision)
-		if err != nil {
-			return err
-		}
-
-		ArtifactMan, ok := man.(*DeserializedManifest)
-		if !ok {
-			// The PUT handler would guard against this situation. Skip this manifest.
-			return nil
-		}
-
-		extractedArtifactType := ArtifactMan.ArtifactType()
-
-		// filtering by artifact type or bypass if no artifact type specified
-		if artifactType == "" || extractedArtifactType == artifactType {
-			desc, err := blobStatter.Stat(ctx, referrerRevision)
+	err = storage.EnumerateReferrerLinks(ctx,
+		rootPath,
+		h.storageDriver,
+		blobStatter,
+		manifests,
+		repo.Named().Name(),
+		map[digest.Digest]struct{}{},
+		map[digest.Digest]storage.ArtifactManifestDel{},
+		func(ctx context.Context,
+			referrerRevision digest.Digest,
+			manifestService distribution.ManifestService,
+			markSet map[digest.Digest]struct{},
+			artifactManifestIndex map[digest.Digest]storage.ArtifactManifestDel,
+			repoName string,
+			storageDriver driver.StorageDriver,
+			blobStatter distribution.BlobStatter) error {
+			man, err := manifests.Get(ctx, referrerRevision)
 			if err != nil {
 				return err
 			}
-			desc.MediaType, _, _ = man.Payload()
-			artifactDesc := artifactv1.Descriptor{
-				MediaType:    desc.MediaType,
-				Size:         desc.Size,
-				Digest:       desc.Digest,
-				ArtifactType: extractedArtifactType,
+
+			ArtifactMan, ok := man.(*DeserializedManifest)
+			if !ok {
+				// The PUT handler would guard against this situation. Skip this manifest.
+				return nil
 			}
 
-			if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
-				referrersUnsorted = append(referrersUnsorted, artifactDesc)
-			} else {
-				extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+			extractedArtifactType := ArtifactMan.ArtifactType()
+
+			// filtering by artifact type or bypass if no artifact type specified
+			if artifactType == "" || extractedArtifactType == artifactType {
+				desc, err := blobStatter.Stat(ctx, referrerRevision)
 				if err != nil {
-					return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
+					return err
 				}
-				referrersWrappers = append(referrersWrappers, referrersSortedWrapper{
-					createdAt:  extractedTimestamp,
-					descriptor: artifactDesc,
-				})
+				desc.MediaType, _, _ = man.Payload()
+				artifactDesc := artifactv1.Descriptor{
+					MediaType:    desc.MediaType,
+					Size:         desc.Size,
+					Digest:       desc.Digest,
+					ArtifactType: extractedArtifactType,
+				}
+
+				if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
+					referrersUnsorted = append(referrersUnsorted, artifactDesc)
+				} else {
+					extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+					if err != nil {
+						return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
+					}
+					referrersWrappers = append(referrersWrappers, referrersSortedWrapper{
+						createdAt:  extractedTimestamp,
+						descriptor: artifactDesc,
+					})
+				}
 			}
-		}
-		return nil
-	})
+			return nil
+		})
 
 	if err != nil {
 		switch err.(type) {
@@ -115,58 +131,4 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 	// append the descriptors, which don't have a created annotation, to the end
 	referrersSorted = append(referrersSorted, referrersUnsorted...)
 	return referrersSorted, nil
-}
-func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath string, ingestor func(digest.Digest) error) error {
-	blobStatter := h.extContext.Registry.BlobStatter()
-
-	return h.storageDriver.Walk(ctx, rootPath, func(fileInfo driver.FileInfo) error {
-		// exit early if directory...
-		if fileInfo.IsDir() {
-			return nil
-		}
-		filePath := fileInfo.Path()
-
-		// check if it's a link
-		_, fileName := path.Split(filePath)
-		if fileName != "link" {
-			return nil
-		}
-
-		// read the digest found in link
-		digest, err := h.readlink(ctx, filePath)
-		if err != nil {
-			return err
-		}
-
-		// ensure this conforms to the linkPathFns
-		_, err = blobStatter.Stat(ctx, digest)
-		if err != nil {
-			// we expect this error to occur so we move on
-			if err == distribution.ErrBlobUnknown {
-				return nil
-			}
-			return err
-		}
-
-		err = ingestor(digest)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-}
-
-func (h *referrersHandler) readlink(ctx context.Context, path string) (digest.Digest, error) {
-	content, err := h.storageDriver.GetContent(ctx, path)
-	if err != nil {
-		return "", err
-	}
-
-	linked, err := digest.Parse(string(content))
-	if err != nil {
-		return "", err
-	}
-
-	return linked, nil
 }
