@@ -208,7 +208,7 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 	if err != nil {
 		return fmt.Errorf("error enumerating blobs: %v", err)
 	}
-	emit("\n%d blobs marked, %d blobs and %d manifests eligible for deletion", len(markSet), len(deleteSet), len(manifestArr))
+	emit("\n%d blobs marked, %d blobs, %d manifests, and %d artifacts eligible for deletion", len(markSet), len(deleteSet), len(manifestArr), len(artifactManifestIndex))
 	for dgst := range deleteSet {
 		emit("blob eligible for deletion: %s", dgst)
 		if opts.DryRun {
@@ -292,5 +292,5 @@ func artifactSweepIngestor(ctx context.Context,
 		}
 		return err
 	}
-	return EnumerateReferrerLinks(ctx, rootPath, storageDriver, blobStatter, manifestService, repoName, markSet, artifactManifestIndex, artifactMarkIngestor)
+	return EnumerateReferrerLinks(ctx, rootPath, storageDriver, blobStatter, manifestService, repoName, markSet, artifactManifestIndex, artifactSweepIngestor)
 }
