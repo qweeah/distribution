@@ -230,6 +230,7 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 		// 2.1.0 unintentionally linked into  _layers.
 		manifestRevisionLinkPath,
 		blobLinkPath,
+		artifactRefPath,
 	}
 
 	manifestDirectoryPathSpec := manifestRevisionsPathSpec{name: repo.name.Name()}

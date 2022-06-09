@@ -500,3 +500,20 @@ func TestOrphanBlobDeleted(t *testing.T) {
 		}
 	}
 }
+
+// func TestReferrersBlobsDeleted(t *testing.T) {
+// 	inmemoryDriver := inmemory.New()
+// 	ctx := context.Background()
+// 	// extConfig := configuration.ExtensionConfig{}
+// 	// ns, err := extension.Get(ctx, "oras", inmemoryDriver, extConfig)
+// 	// if err != nil {
+// 	// 	fmt.Fprintf(os.Stderr, "unable to configure extension namespace oras: %s", err)
+// 	// 	os.Exit(1)
+// 	// }
+
+// 	options := []RegistryOption{AddExtendedStorage(ns)}
+// 	// add the extended storage for every namespace to the new registry options
+
+// 	registry := createRegistry(t, inmemoryDriver, options...)
+// 	repo := makeRepository(t, registry, "michael_z_doukas")
+// }

@@ -243,7 +243,7 @@ func pathFor(spec pathSpec) (string, error) {
 	case repositoriesRootPathSpec:
 		return path.Join(repoPrefix...), nil
 	case referrersRootPathSpec:
-		return path.Join("/docker/registry/", "v2", "repositories", v.name, "_refs", "subjects"), nil
+		return path.Join(append(repoPrefix, v.name, "_refs", "subjects")...), nil
 	default:
 		// TODO(sday): This is an internal error. Ensure it doesn't escape (panic?).
 		return "", fmt.Errorf("unknown path spec: %#v", v)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -12,6 +13,7 @@ import (
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/manifest/schema2"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -171,6 +173,40 @@ func (ms *manifestStore) Put(ctx context.Context, manifest distribution.Manifest
 // Delete removes the revision of the specified manifest.
 func (ms *manifestStore) Delete(ctx context.Context, dgst digest.Digest) error {
 	dcontext.GetLogger(ms.ctx).Debug("(*manifestStore).Delete")
+
+	// find all artifacts linked to manifest and add to artifactManifestIndex for subsequent deletion
+	artifactManifestIndex := make(map[digest.Digest]ArtifactManifestDel)
+	repositoryName := ms.repository.Named().Name()
+	referrerRootPath, err := pathFor(referrersRootPathSpec{name: repositoryName})
+	if err != nil {
+		return err
+	}
+	rootPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
+	err = EnumerateReferrerLinks(ctx,
+		rootPath,
+		ms.blobStore.driver,
+		ms.repository.statter,
+		ms,
+		repositoryName,
+		map[digest.Digest]struct{}{},
+		artifactManifestIndex,
+		artifactSweepIngestor)
+
+	if err != nil {
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
+		}
+		return err
+	}
+	// delete the artifact manifest revision and the _refs directory for each artifact indexed
+	for key, _ := range artifactManifestIndex {
+		err := ms.blobStore.Delete(ctx, key)
+		if err != nil {
+			return err
+		}
+	}
+	// delete the manifest revision and the _refs directory for original manifest
 	return ms.blobStore.Delete(ctx, dgst)
 }
 

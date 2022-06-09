@@ -463,3 +463,12 @@ func blobLinkPath(name string, dgst digest.Digest) (string, error) {
 func manifestRevisionLinkPath(name string, dgst digest.Digest) (string, error) {
 	return pathFor(manifestRevisionLinkPathSpec{name: name, revision: dgst})
 }
+
+// artifactRefPath provides the path to the manifest's _refs directory.
+func artifactRefPath(name string, dgst digest.Digest) (string, error) {
+	rootPath, err := pathFor(referrersRootPathSpec{name: name})
+	if err != nil {
+		return "", err
+	}
+	return path.Join(rootPath, dgst.Algorithm().String(), dgst.Hex()), nil
+}
