@@ -125,7 +125,7 @@ blob eligible for deletion: sha256:f251d679a7c61455f06d793e43c06786d7766c88b8c24
 
 ## Garbage Collection With Referrers
 
-The life of a reference artifact is directly linked to it's subject. When a reference artifact's subject manifest is deleted, the attached artifacts and its descendants must be deleted.
+The life of a reference artifact is directly linked to its subject. When a reference artifact's subject manifest is deleted, the attached artifacts and its descendants must be deleted.
 
 Manifest garbage collection is extended to include reference artifact collection. During the marking process, each manifest is queried for any reference artifacts by enumerating the link files at the path `repositories/<repository-name>/_refs/subjects/sha256/<subject-digest>`. For each artifact, the artifact manifest and its blobs are marked. Finally, collection recurses to look for further artifact descendants to mark in a similar fashion.
 

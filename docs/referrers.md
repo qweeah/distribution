@@ -1,5 +1,3 @@
-[[__TOC__]]
-
 # ORAS Artifacts Distribution
 
 This document describes an experimental prototype that implements the
