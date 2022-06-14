@@ -1,4 +1,4 @@
-package extension
+package storage
 
 import (
 	c "context"
@@ -9,7 +9,6 @@ import (
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
-	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 )
 
@@ -44,7 +43,7 @@ type Route struct {
 
 // Namespace is the namespace that is used to define extensions to the distribution.
 type Namespace interface {
-	storage.ExtendedStorage
+	ExtendedStorage
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level
 	GetRepositoryRoutes() []Route
 	// GetRegistryRoutes returns a list of extension routes scoped at a registry level

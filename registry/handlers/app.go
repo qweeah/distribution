@@ -28,7 +28,6 @@ import (
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
 	"github.com/distribution/distribution/v3/registry/auth"
-	"github.com/distribution/distribution/v3/registry/extension"
 	registrymiddleware "github.com/distribution/distribution/v3/registry/middleware/registry"
 	repositorymiddleware "github.com/distribution/distribution/v3/registry/middleware/repository"
 	"github.com/distribution/distribution/v3/registry/proxy"
@@ -98,7 +97,7 @@ type App struct {
 	repositoryExtensions []string
 
 	// extensionNamespaces is a list of namespaces that are configured as extensions to the distribution
-	extensionNamespaces []extension.Namespace
+	extensionNamespaces []storage.Namespace
 }
 
 // NewApp takes a configuration and returns a configured app, ready to serve
@@ -927,9 +926,9 @@ func (app *App) nameRequired(r *http.Request) bool {
 
 func (app *App) initializeExtensionNamespaces(ctx context.Context, extensions map[string]configuration.ExtensionConfig) error {
 
-	extensionNamespaces := []extension.Namespace{}
+	extensionNamespaces := []storage.Namespace{}
 	for key, options := range extensions {
-		ns, err := extension.Get(ctx, key, app.driver, options)
+		ns, err := storage.Get(ctx, key, app.driver, options)
 		if err != nil {
 			return fmt.Errorf("unable to configure extension namespace (%s): %s", key, err)
 		}
@@ -979,7 +978,7 @@ func (app *App) registerExtensionRoutes(ctx context.Context) error {
 	return nil
 }
 
-func (app *App) registerExtensionRoute(route extension.Route, nameRequired bool) error {
+func (app *App) registerExtensionRoute(route storage.Route, nameRequired bool) error {
 	if route.Dispatcher == nil {
 		return nil
 	}
@@ -997,7 +996,7 @@ func (app *App) registerExtensionRoute(route extension.Route, nameRequired bool)
 	dispatch := route.Dispatcher
 	app.register(desc.Name, func(ctx *Context, r *http.Request) http.Handler {
 		return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			extCtx := &extension.Context{
+			extCtx := &storage.Context{
 				Context:    ctx.Context,
 				Repository: ctx.Repository,
 				Errors:     ctx.Errors,

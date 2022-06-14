@@ -1,18 +1,23 @@
 package storage
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"path"
 	"testing"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/manifest/orasartifact"
+	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/distribution/distribution/v3/testutil"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 type image struct {
@@ -156,6 +161,56 @@ func uploadRandomSchema2Image(t *testing.T, repository distribution.Repository) 
 		manifestDigest: manifestDigest,
 		layers:         randomLayers,
 	}
+}
+
+func uploadRandomArtifact(t *testing.T, repository distribution.Repository, subjImg image) (digest.Digest, *orasartifact.DeserializedManifest) {
+	// build artifact blob and push blob
+	artifactBlobDigest := digest.FromBytes([]byte{})
+
+	testutil.UploadBlobs(repository, map[digest.Digest]io.ReadSeeker{
+		artifactBlobDigest: bytes.NewReader([]byte{}),
+	})
+
+	artifactBlobDescriptor := orasartifacts.Descriptor{
+		MediaType: orasartifacts.MediaTypeDescriptor,
+		Digest:    artifactBlobDigest,
+		Size:      0,
+	}
+
+	_, subjImgPayload, err := subjImg.manifest.Payload()
+	if err != nil {
+		t.Fatalf("failed to get subject image payload: %v", err)
+	}
+	// build artifact manifest template
+	artifactManifest := orasartifacts.Manifest{
+		MediaType:    orasartifacts.MediaTypeArtifactManifest,
+		ArtifactType: "test_artifactType",
+		Blobs: []orasartifacts.Descriptor{
+			artifactBlobDescriptor,
+		},
+		Subject: orasartifacts.Descriptor{
+			MediaType: schema2.MediaTypeManifest,
+			Size:      int64(len(subjImgPayload)),
+			Digest:    subjImg.manifestDigest,
+		},
+	}
+	dm := new(orasartifact.DeserializedManifest)
+	marshalledMan, err := json.Marshal(artifactManifest)
+	if err != nil {
+		t.Fatalf("artifact manifest could not be serialized to byte array: %v", err)
+	}
+	err = dm.UnmarshalJSON(marshalledMan)
+	if err != nil {
+		t.Fatalf("artifact manifest could not be unmarshalled: %v", err)
+	}
+	// upload manifest
+	ctx := context.Background()
+	manifestService := makeManifestService(t, repository)
+	manifestDigest, err := manifestService.Put(ctx, dm)
+	if err != nil {
+		t.Fatalf("artifact manifest upload failed: %v", err)
+	}
+	return manifestDigest, dm
 }
 
 func TestNoDeletionNoEffect(t *testing.T) {
@@ -501,19 +556,50 @@ func TestOrphanBlobDeleted(t *testing.T) {
 	}
 }
 
-// func TestReferrersBlobsDeleted(t *testing.T) {
-// 	inmemoryDriver := inmemory.New()
-// 	ctx := context.Background()
-// 	// extConfig := configuration.ExtensionConfig{}
-// 	// ns, err := extension.Get(ctx, "oras", inmemoryDriver, extConfig)
-// 	// if err != nil {
-// 	// 	fmt.Fprintf(os.Stderr, "unable to configure extension namespace oras: %s", err)
-// 	// 	os.Exit(1)
-// 	// }
+func TestReferrersBlobsDeleted(t *testing.T) {
+	inmemoryDriver := inmemory.New()
+	registry := createArtifactRegistry(t, inmemoryDriver)
+	repo := makeRepository(t, registry, "referrers_repo")
+	ms := makeManifestService(t, repo)
+	ctx := context.Background()
+	tagService := repo.Tags(ctx)
 
-// 	options := []RegistryOption{AddExtendedStorage(ns)}
-// 	// add the extended storage for every namespace to the new registry options
+	subjImg := uploadRandomSchema2Image(t, repo)
+	artifactDigest, artifactManifest := uploadRandomArtifact(t, repo, subjImg)
 
-// 	registry := createRegistry(t, inmemoryDriver, options...)
-// 	repo := makeRepository(t, registry, "michael_z_doukas")
-// }
+	// the tags folder doesn't exist for this repo until a tag is added
+	// this leads to an error in Mark and Sweep if tags folder not found
+	err := tagService.Tag(ctx, "test", distribution.Descriptor{Digest: subjImg.manifestDigest})
+	if err != nil {
+		t.Fatalf("failed to tag subject image: %v", err)
+	}
+	err = tagService.Untag(ctx, "test")
+	if err != nil {
+		t.Fatalf("failed to untag subject image: %v", err)
+	}
+
+	// Run GC
+	err = MarkAndSweep(ctx, inmemoryDriver, registry, GCOpts{
+		DryRun:         false,
+		RemoveUntagged: true,
+	})
+	if err != nil {
+		t.Fatalf("Failed mark and sweep: %v", err)
+	}
+
+	manifests := allManifests(t, ms)
+	blobs := allBlobs(t, registry)
+
+	if _, exists := manifests[artifactDigest]; exists {
+		t.Fatalf("artifact manifest with digest %s should have been deleted", artifactDigest.String())
+	}
+
+	if _, exists := blobs[artifactDigest]; exists {
+		t.Fatalf("artifact manifest blob with digest %s should have been deleted", artifactDigest.String())
+	}
+
+	blobDigest := artifactManifest.Inner.Blobs[0].Digest
+	if _, exists := blobs[blobDigest]; exists {
+		t.Fatalf("artifact blob with digest %s should have been deleted", blobDigest)
+	}
+}

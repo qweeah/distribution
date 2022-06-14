@@ -6,7 +6,6 @@ import (
 
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
-	"github.com/distribution/distribution/v3/registry/extension"
 	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
@@ -20,7 +19,7 @@ type tagHistoryAPIResponse struct {
 
 // manifestHandler handles requests for manifests under a manifest name.
 type tagHistoryHandler struct {
-	*extension.Context
+	*storage.Context
 	storageDriver driver.StorageDriver
 }
 

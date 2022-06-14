@@ -9,7 +9,7 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/registry/extension"
+	"github.com/distribution/distribution/v3/manifest/orasartifact"
 	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
@@ -22,7 +22,7 @@ type ArtifactService interface {
 
 // referrersHandler handles http operations on manifest referrers.
 type referrersHandler struct {
-	extContext    *extension.Context
+	extContext    *storage.Context
 	storageDriver driver.StorageDriver
 
 	// Digest is the target manifest's digest.
@@ -33,9 +33,6 @@ type referrersSortedWrapper struct {
 	createdAt  time.Time
 	descriptor artifactv1.Descriptor
 }
-
-const createAnnotationName = "io.cncf.oras.artifact.created"
-const createAnnotationTimestampFormat = time.RFC3339
 
 func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest, artifactType string) ([]artifactv1.Descriptor, error) {
 	dcontext.GetLogger(ctx).Debug("(*manifestStore).Referrers")
@@ -73,7 +70,7 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 				return err
 			}
 
-			ArtifactMan, ok := man.(*DeserializedManifest)
+			ArtifactMan, ok := man.(*orasartifact.DeserializedManifest)
 			if !ok {
 				// The PUT handler would guard against this situation. Skip this manifest.
 				return nil
@@ -95,10 +92,10 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 					ArtifactType: extractedArtifactType,
 				}
 
-				if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
+				if annotation, ok := ArtifactMan.Annotations()[orasartifact.CreateAnnotationName]; !ok {
 					referrersUnsorted = append(referrersUnsorted, artifactDesc)
 				} else {
-					extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+					extractedTimestamp, err := time.Parse(orasartifact.CreateAnnotationTimestampFormat, annotation)
 					if err != nil {
 						return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
 					}
@@ -131,4 +128,8 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 	// append the descriptors, which don't have a created annotation, to the end
 	referrersSorted = append(referrersSorted, referrersUnsorted...)
 	return referrersSorted, nil
+}
+
+func referrersLinkPath(name string) string {
+	return path.Join("/docker/registry/", "v2", "repositories", name, "_refs", "subjects")
 }

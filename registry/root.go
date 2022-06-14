@@ -5,7 +5,6 @@ import (
 	"os"
 
 	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/registry/extension"
 	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
 	"github.com/distribution/distribution/v3/version"
@@ -73,9 +72,9 @@ var GCCmd = &cobra.Command{
 		}
 
 		extensions := config.Extensions
-		extensionNamespaces := []extension.Namespace{}
+		extensionNamespaces := []storage.Namespace{}
 		for key, options := range extensions {
-			ns, err := extension.Get(ctx, key, driver, options)
+			ns, err := storage.Get(ctx, key, driver, options)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "unable to configure extension namespace (%s): %s", key, err)
 				os.Exit(1)
