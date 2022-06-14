@@ -1,4 +1,4 @@
-package storage
+package oras
 
 import (
 	"context"
@@ -7,28 +7,62 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
-	"github.com/distribution/distribution/v3/manifest/orasartifact"
 	"github.com/distribution/distribution/v3/manifest/schema2"
+	"github.com/distribution/distribution/v3/reference"
+	"github.com/distribution/distribution/v3/registry/extension"
+	storage "github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/opencontainers/go-digest"
 	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
-func createArtifactRegistry(t *testing.T, driver driver.StorageDriver, options ...RegistryOption) distribution.Namespace {
+func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storage.RegistryOption) distribution.Namespace {
 	ctx := context.Background()
-	options = append([]RegistryOption{EnableDelete, AddExtendedStorage(&MockNamespace{storageDriver: driver, referrersEnabled: true})}, options...)
-	registry, err := NewRegistry(ctx, driver, options...)
+	options = append([]storage.RegistryOption{storage.EnableDelete}, options...)
+	extensionConfig := OrasOptions{
+		ArtifactsExtComponents: []string{"referrers"},
+	}
+	ns, err := extension.Get(ctx, "oras", driver, extensionConfig)
+	if err != nil {
+		t.Fatalf("unable to configure extension namespace (%s): %s", "oras", err)
+	}
+	options = append(options, storage.AddExtendedStorage(ns))
+	registry, err := storage.NewRegistry(ctx, driver, options...)
 	if err != nil {
 		t.Fatalf("failed to construct namespace")
 	}
 	return registry
 }
 
+func makeRepository(t *testing.T, registry distribution.Namespace, name string) distribution.Repository {
+	ctx := context.Background()
+	named, err := reference.WithName(name)
+	if err != nil {
+		t.Fatalf("failed to parse name %s:  %v", name, err)
+	}
+
+	repo, err := registry.Repository(ctx, named)
+	if err != nil {
+		t.Fatalf("failed to construct repository: %v", err)
+	}
+	return repo
+}
+
+func makeManifestService(t *testing.T, repository distribution.Repository) distribution.ManifestService {
+	ctx := context.Background()
+
+	manifestService, err := repository.Manifests(ctx)
+	if err != nil {
+		t.Fatalf("failed to construct manifest store: %v", err)
+	}
+	return manifestService
+}
+
 func TestVerifyArtifactManifestPut(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
-	registry := createArtifactRegistry(t, inmemoryDriver)
+	registry := createRegistry(t, inmemoryDriver)
 	repo := makeRepository(t, registry, "test")
 	manifestService := makeManifestService(t, repo)
 
@@ -78,8 +112,8 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 		Size:      artifactBlob.Size,
 	}
 
-	template := orasartifact.Manifest{
-		Inner: orasartifacts.Manifest{
+	template := Manifest{
+		inner: orasartifacts.Manifest{
 			MediaType:    orasartifacts.MediaTypeArtifactManifest,
 			ArtifactType: "test_artifactType",
 			Blobs: []orasartifacts.Descriptor{
@@ -91,7 +125,7 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 				Digest:    dg,
 			},
 			Annotations: map[string]string{
-				orasartifact.CreateAnnotationName: "2022-04-22T17:03:05-07:00",
+				createAnnotationName: "2022-04-22T17:03:05-07:00",
 			},
 		},
 	}
@@ -108,18 +142,18 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 	cases := []testcase{
 		{
 			orasartifacts.MediaTypeArtifactManifest,
-			template.Inner.ArtifactType,
-			template.Inner.Blobs,
-			template.Inner.Subject,
+			template.inner.ArtifactType,
+			template.inner.Blobs,
+			template.inner.Subject,
 			template.Annotations(),
 			nil,
 		},
 		// non oras artifact manifest media type
 		{
 			"wrongMediaType",
-			template.Inner.ArtifactType,
-			template.Inner.Blobs,
-			template.Inner.Subject,
+			template.inner.ArtifactType,
+			template.inner.Blobs,
+			template.inner.Subject,
 			template.Annotations(),
 			errInvalidMediaType,
 		},
@@ -127,16 +161,16 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 		{
 			orasartifacts.MediaTypeArtifactManifest,
 			"",
-			template.Inner.Blobs,
-			template.Inner.Subject,
+			template.inner.Blobs,
+			template.inner.Subject,
 			template.Annotations(),
 			errInvalidArtifactType,
 		},
 		// invalid subject
 		{
 			orasartifacts.MediaTypeArtifactManifest,
-			template.Inner.ArtifactType,
-			template.Inner.Blobs,
+			template.inner.ArtifactType,
+			template.inner.Blobs,
 			orasartifacts.Descriptor{
 				MediaType: dm.MediaType,
 				Size:      int64(len(dmPayload)),
@@ -148,18 +182,18 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 		// invalid created annotation
 		{
 			orasartifacts.MediaTypeArtifactManifest,
-			template.Inner.ArtifactType,
-			template.Inner.Blobs,
-			template.Inner.Subject,
+			template.inner.ArtifactType,
+			template.inner.Blobs,
+			template.inner.Subject,
 			map[string]string{
-				orasartifact.CreateAnnotationName: "invalid_timestamp",
+				createAnnotationName: "invalid_timestamp",
 			},
 			errInvalidCreatedAnnotation,
 		},
 		// invalid blob
 		{
 			orasartifacts.MediaTypeArtifactManifest,
-			template.Inner.ArtifactType,
+			template.inner.ArtifactType,
 			[]orasartifacts.Descriptor{
 				{
 					MediaType: artifactBlob.MediaType,
@@ -167,15 +201,15 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 					Size:      artifactBlob.Size,
 				},
 			},
-			template.Inner.Subject,
+			template.inner.Subject,
 			template.Annotations(),
 			distribution.ErrManifestBlobUnknown{Digest: digest.FromString("sha256:invalid_blob_digest")},
 		},
 	}
 
 	for _, c := range cases {
-		manifest := orasartifact.Manifest{
-			Inner: orasartifacts.Manifest{
+		manifest := Manifest{
+			inner: orasartifacts.Manifest{
 				MediaType:    c.MediaType,
 				ArtifactType: c.ArtifactType,
 				Blobs:        c.Blobs,
@@ -184,14 +218,14 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 			},
 		}
 
-		marshalledManifest, err := json.Marshal(manifest.Inner)
+		marshalledManifest, err := json.Marshal(manifest.inner)
 		if err != nil {
 			t.Fatalf("failed to marshal manifest: %v", err)
 		}
 
-		_, err = manifestService.Put(ctx, &orasartifact.DeserializedManifest{
+		_, err = manifestService.Put(ctx, &DeserializedManifest{
 			Manifest: manifest,
-			Raw:      marshalledManifest,
+			raw:      marshalledManifest,
 		})
 		if verr, ok := err.(distribution.ErrManifestVerification); ok {
 			err = verr[0]

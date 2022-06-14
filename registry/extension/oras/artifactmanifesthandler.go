@@ -1,4 +1,4 @@
-package storage
+package oras
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/manifest/orasartifact"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -21,14 +20,14 @@ var (
 	errInvalidCreatedAnnotation = errors.New("failed to parse created time")
 )
 
-// ArtifactManifestHandler is a ManifestHandler that covers ORAS Artifacts.
-type ArtifactManifestHandler struct {
-	Repository    distribution.Repository
-	BlobStore     distribution.BlobStore
-	StorageDriver driver.StorageDriver
+// artifactManifestHandler is a ManifestHandler that covers ORAS Artifacts.
+type artifactManifestHandler struct {
+	repository    distribution.Repository
+	blobStore     distribution.BlobStore
+	storageDriver driver.StorageDriver
 }
 
-func (amh *ArtifactManifestHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
+func (amh *artifactManifestHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
 	dcontext.GetLogger(ctx).Debug("(*artifactManifestHandler).Unmarshal")
 
 	var v json.RawMessage
@@ -36,7 +35,7 @@ func (amh *ArtifactManifestHandler) Unmarshal(ctx context.Context, dgst digest.D
 		return nil, distribution.ErrManifestFormatUnsupported
 	}
 
-	dm := &orasartifact.DeserializedManifest{}
+	dm := &DeserializedManifest{}
 	if err := dm.UnmarshalJSON(content); err != nil {
 		return nil, distribution.ErrManifestFormatUnsupported
 	}
@@ -44,10 +43,10 @@ func (amh *ArtifactManifestHandler) Unmarshal(ctx context.Context, dgst digest.D
 	return dm, nil
 }
 
-func (ah *ArtifactManifestHandler) Put(ctx context.Context, man distribution.Manifest, skipDependencyVerification bool) (digest.Digest, error) {
+func (ah *artifactManifestHandler) Put(ctx context.Context, man distribution.Manifest, skipDependencyVerification bool) (digest.Digest, error) {
 	dcontext.GetLogger(ctx).Debug("(*artifactManifestHandler).Put")
 
-	da, ok := man.(*orasartifact.DeserializedManifest)
+	da, ok := man.(*DeserializedManifest)
 	if !ok {
 		return "", distribution.ErrManifestFormatUnsupported
 	}
@@ -61,7 +60,7 @@ func (ah *ArtifactManifestHandler) Put(ctx context.Context, man distribution.Man
 		return "", err
 	}
 
-	revision, err := ah.BlobStore.Put(ctx, mt, payload)
+	revision, err := ah.blobStore.Put(ctx, mt, payload)
 	if err != nil {
 		dcontext.GetLogger(ctx).Errorf("error putting payload into blobstore: %v", err)
 		return "", err
@@ -80,7 +79,7 @@ func (ah *ArtifactManifestHandler) Put(ctx context.Context, man distribution.Man
 // perspective of the registry. As a policy, the registry only tries to
 // store valid content, leaving trust policies of that content up to
 // consumers.
-func (amh *ArtifactManifestHandler) verifyManifest(ctx context.Context, dm orasartifact.DeserializedManifest, skipDependencyVerification bool) error {
+func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm DeserializedManifest, skipDependencyVerification bool) error {
 	var errs distribution.ErrManifestVerification
 
 	if dm.ArtifactType() == "" {
@@ -91,7 +90,7 @@ func (amh *ArtifactManifestHandler) verifyManifest(ctx context.Context, dm orasa
 		errs = append(errs, errInvalidMediaType)
 	}
 
-	if createdAt, ok := dm.Annotations()[orasartifact.CreateAnnotationName]; ok {
+	if createdAt, ok := dm.Annotations()[createAnnotationName]; ok {
 		_, err := time.Parse(time.RFC3339, createdAt)
 		if err != nil {
 			errs = append(errs, errInvalidCreatedAnnotation)
@@ -99,7 +98,7 @@ func (amh *ArtifactManifestHandler) verifyManifest(ctx context.Context, dm orasa
 	}
 
 	if !skipDependencyVerification {
-		bs := amh.Repository.Blobs(ctx)
+		bs := amh.repository.Blobs(ctx)
 
 		// All references must exist.
 		for _, blobDesc := range dm.References() {
@@ -113,7 +112,7 @@ func (amh *ArtifactManifestHandler) verifyManifest(ctx context.Context, dm orasa
 			}
 		}
 
-		ms, err := amh.Repository.Manifests(ctx)
+		ms, err := amh.repository.Manifests(ctx)
 		if err != nil {
 			return err
 		}
@@ -136,20 +135,21 @@ func (amh *ArtifactManifestHandler) verifyManifest(ctx context.Context, dm orasa
 }
 
 // indexReferrers indexes the subject of the given revision in its referrers index store.
-func (amh *ArtifactManifestHandler) indexReferrers(ctx context.Context, dm orasartifact.DeserializedManifest, revision digest.Digest) error {
+func (amh *artifactManifestHandler) indexReferrers(ctx context.Context, dm DeserializedManifest, revision digest.Digest) error {
 	// [TODO] We can use artifact type in the link path to support filtering by artifact type
 	//  but need to consider the max path length in different os
 	//artifactType := dm.ArtifactType()
 	subjectRevision := dm.Subject().Digest
-	referrerRoot, err := pathFor(referrersRootPathSpec{name: amh.Repository.Named().Name()})
-	if err != nil {
-		return err
-	}
-	rootPath := path.Join(referrerRoot, subjectRevision.Algorithm().String(), subjectRevision.Hex())
+
+	rootPath := path.Join(referrersLinkPath(amh.repository.Named().Name()), subjectRevision.Algorithm().String(), subjectRevision.Hex())
 	referenceLinkPath := path.Join(rootPath, revision.Algorithm().String(), revision.Hex(), "link")
-	if err := amh.StorageDriver.PutContent(ctx, referenceLinkPath, []byte(revision.String())); err != nil {
+	if err := amh.storageDriver.PutContent(ctx, referenceLinkPath, []byte(revision.String())); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func referrersLinkPath(name string) string {
+	return path.Join("/docker/registry/", "v2", "repositories", name, "_refs", "subjects")
 }

@@ -193,9 +193,11 @@ func (ms *manifestStore) Delete(ctx context.Context, dgst digest.Digest) error {
 		artifactSweepIngestor)
 
 	if err != nil {
-		if _, ok := err.(driver.PathNotFoundError); !ok {
-			return err
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
 		}
+		return err
 	}
 	// delete the artifact manifest revision and the _refs directory for each artifact indexed
 	for key, _ := range artifactManifestIndex {

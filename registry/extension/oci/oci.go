@@ -7,6 +7,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/configuration"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
+	"github.com/distribution/distribution/v3/registry/extension"
 	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/gorilla/handlers"
@@ -31,7 +32,7 @@ type ociOptions struct {
 }
 
 // newOciNamespace creates a new extension namespace with the name "oci"
-func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (storage.Namespace, error) {
+func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (extension.Namespace, error) {
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {
 		return nil, err
@@ -59,7 +60,7 @@ func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, op
 
 func init() {
 	// register the extension namespace.
-	storage.Register(namespaceName, newOciNamespace)
+	extension.Register(namespaceName, newOciNamespace)
 }
 
 // GetManifestHandlers returns a list of manifest handlers that will be registered in the manifest store.
@@ -69,11 +70,11 @@ func (o *ociNamespace) GetManifestHandlers(repo distribution.Repository, blobSto
 }
 
 // GetRepositoryRoutes returns a list of extension routes scoped at a repository level
-func (o *ociNamespace) GetRepositoryRoutes() []storage.Route {
-	var routes []storage.Route
+func (o *ociNamespace) GetRepositoryRoutes() []extension.Route {
+	var routes []extension.Route
 
 	if o.discoverEnabled {
-		routes = append(routes, storage.Route{
+		routes = append(routes, extension.Route{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: discoverComponentName,
@@ -94,11 +95,11 @@ func (o *ociNamespace) GetRepositoryRoutes() []storage.Route {
 }
 
 // GetRegistryRoutes returns a list of extension routes scoped at a registry level
-func (o *ociNamespace) GetRegistryRoutes() []storage.Route {
-	var routes []storage.Route
+func (o *ociNamespace) GetRegistryRoutes() []extension.Route {
+	var routes []extension.Route
 
 	if o.discoverEnabled {
-		routes = append(routes, storage.Route{
+		routes = append(routes, extension.Route{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: discoverComponentName,
@@ -133,7 +134,7 @@ func (o *ociNamespace) GetNamespaceDescription() string {
 	return namespaceDescription
 }
 
-func (o *ociNamespace) discoverDispatcher(ctx *storage.Context, r *http.Request) http.Handler {
+func (o *ociNamespace) discoverDispatcher(ctx *extension.Context, r *http.Request) http.Handler {
 	extensionHandler := &extensionHandler{
 		Context:       ctx,
 		storageDriver: o.storageDriver,
