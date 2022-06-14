@@ -193,14 +193,12 @@ func (ms *manifestStore) Delete(ctx context.Context, dgst digest.Digest) error {
 		artifactSweepIngestor)
 
 	if err != nil {
-		switch err.(type) {
-		case driver.PathNotFoundError:
-			return nil
+		if _, ok := err.(driver.PathNotFoundError); !ok {
+			return err
 		}
-		return err
 	}
 	// delete the artifact manifest revision and the _refs directory for each artifact indexed
-	for key, _ := range artifactManifestIndex {
+	for key := range artifactManifestIndex {
 		err := ms.blobStore.Delete(ctx, key)
 		if err != nil {
 			return err
