@@ -9,7 +9,6 @@ import (
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/reference"
-	"github.com/distribution/distribution/v3/registry/extension"
 	storage "github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
@@ -23,11 +22,11 @@ func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storag
 	extensionConfig := OrasOptions{
 		ArtifactsExtComponents: []string{"referrers"},
 	}
-	ns, err := extension.Get(ctx, "oras", driver, extensionConfig)
+	ns, err := distribution.GetExtension(ctx, "oras", driver, extensionConfig)
 	if err != nil {
 		t.Fatalf("unable to configure extension namespace (%s): %s", "oras", err)
 	}
-	options = append(options, storage.AddExtendedStorage(ns))
+	options = append(options, storage.AddExtendedNamespace(ns))
 	registry, err := storage.NewRegistry(ctx, driver, options...)
 	if err != nil {
 		t.Fatalf("failed to construct namespace")

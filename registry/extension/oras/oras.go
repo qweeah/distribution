@@ -8,8 +8,6 @@ import (
 	"github.com/distribution/distribution/v3/configuration"
 	dcontext "github.com/distribution/distribution/v3/context"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
-	"github.com/distribution/distribution/v3/registry/extension"
-	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/gorilla/handlers"
 	"github.com/opencontainers/go-digest"
@@ -27,6 +25,7 @@ const (
 type orasNamespace struct {
 	storageDriver    driver.StorageDriver
 	referrersEnabled bool
+	gcHandler        orasGCHandler
 }
 
 type OrasOptions struct {
@@ -34,7 +33,7 @@ type OrasOptions struct {
 }
 
 // newOrasNamespace creates a new extension namespace with the name "oras"
-func newOrasNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (extension.Namespace, error) {
+func newOrasNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.ExtendedNamespace, error) {
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {
 		return nil, err
@@ -54,20 +53,23 @@ func newOrasNamespace(ctx context.Context, storageDriver driver.StorageDriver, o
 		}
 	}
 
+	orasGCHandler := orasGCHandler{}
+
 	return &orasNamespace{
 		referrersEnabled: referrersEnabled,
 		storageDriver:    storageDriver,
+		gcHandler:        orasGCHandler,
 	}, nil
 }
 
 func init() {
-	extension.Register(namespaceName, newOrasNamespace)
+	distribution.RegisterExtension(namespaceName, newOrasNamespace)
 }
 
 // GetManifestHandlers returns a list of manifest handlers that will be registered in the manifest store.
-func (o *orasNamespace) GetManifestHandlers(repo distribution.Repository, blobStore distribution.BlobStore) []storage.ManifestHandler {
+func (o *orasNamespace) GetManifestHandlers(repo distribution.Repository, blobStore distribution.BlobStore) []distribution.ManifestHandler {
 	if o.referrersEnabled {
-		return []storage.ManifestHandler{
+		return []distribution.ManifestHandler{
 			&artifactManifestHandler{
 				repository:    repo,
 				blobStore:     blobStore,
@@ -75,15 +77,25 @@ func (o *orasNamespace) GetManifestHandlers(repo distribution.Repository, blobSt
 			}}
 	}
 
-	return []storage.ManifestHandler{}
+	return []distribution.ManifestHandler{}
+}
+
+func (o *orasNamespace) GetGarbageCollectionHandlers() []distribution.GCExtensionHandler {
+	if o.referrersEnabled {
+		return []distribution.GCExtensionHandler{
+			&o.gcHandler,
+		}
+	}
+
+	return []distribution.GCExtensionHandler{}
 }
 
 // GetRepositoryRoutes returns a list of extension routes scoped at a repository level
-func (d *orasNamespace) GetRepositoryRoutes() []extension.Route {
-	var routes []extension.Route
+func (d *orasNamespace) GetRepositoryRoutes() []distribution.ExtensionRoute {
+	var routes []distribution.ExtensionRoute
 
 	if d.referrersEnabled {
-		routes = append(routes, extension.Route{
+		routes = append(routes, distribution.ExtensionRoute{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: referrersComponentName,
@@ -105,7 +117,7 @@ func (d *orasNamespace) GetRepositoryRoutes() []extension.Route {
 
 // GetRegistryRoutes returns a list of extension routes scoped at a registry level
 // There are no registry scoped routes exposed by this namespace
-func (d *orasNamespace) GetRegistryRoutes() []extension.Route {
+func (d *orasNamespace) GetRegistryRoutes() []distribution.ExtensionRoute {
 	return nil
 }
 
@@ -124,7 +136,7 @@ func (d *orasNamespace) GetNamespaceDescription() string {
 	return namespaceDescription
 }
 
-func (o *orasNamespace) referrersDispatcher(extCtx *extension.Context, r *http.Request) http.Handler {
+func (o *orasNamespace) referrersDispatcher(extCtx *distribution.ExtensionContext, r *http.Request) http.Handler {
 
 	handler := &referrersHandler{
 		storageDriver: o.storageDriver,

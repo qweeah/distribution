@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
@@ -13,19 +12,18 @@ import (
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/manifest/schema2"
-	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// A ManifestHandler gets and puts manifests of a particular type.
-type ManifestHandler interface {
-	// Unmarshal unmarshals the manifest from a byte slice.
-	Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error)
+// // A ManifestHandler gets and puts manifests of a particular type.
+// type ManifestHandler interface {
+// 	// Unmarshal unmarshals the manifest from a byte slice.
+// 	Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error)
 
-	// Put creates or updates the given manifest returning the manifest digest.
-	Put(ctx context.Context, manifest distribution.Manifest, skipDependencyVerification bool) (digest.Digest, error)
-}
+// 	// Put creates or updates the given manifest returning the manifest digest.
+// 	Put(ctx context.Context, manifest distribution.Manifest, skipDependencyVerification bool) (digest.Digest, error)
+// }
 
 // SkipLayerVerification allows a manifest to be Put before its
 // layers are on the filesystem
@@ -50,12 +48,12 @@ type manifestStore struct {
 
 	skipDependencyVerification bool
 
-	schema1Handler      ManifestHandler
-	schema2Handler      ManifestHandler
-	ocischemaHandler    ManifestHandler
-	manifestListHandler ManifestHandler
+	schema1Handler      distribution.ManifestHandler
+	schema2Handler      distribution.ManifestHandler
+	ocischemaHandler    distribution.ManifestHandler
+	manifestListHandler distribution.ManifestHandler
 
-	extensionManifestHandlers []ManifestHandler
+	extensionManifestHandlers []distribution.ManifestHandler
 }
 
 var _ distribution.ManifestService = &manifestStore{}
@@ -173,38 +171,6 @@ func (ms *manifestStore) Put(ctx context.Context, manifest distribution.Manifest
 // Delete removes the revision of the specified manifest.
 func (ms *manifestStore) Delete(ctx context.Context, dgst digest.Digest) error {
 	dcontext.GetLogger(ms.ctx).Debug("(*manifestStore).Delete")
-
-	// find all artifacts linked to manifest and add to artifactManifestIndex for subsequent deletion
-	artifactManifestIndex := make(map[digest.Digest]ArtifactManifestDel)
-	repositoryName := ms.repository.Named().Name()
-	referrerRootPath, err := pathFor(referrersRootPathSpec{name: repositoryName})
-	if err != nil {
-		return err
-	}
-	rootPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
-	err = EnumerateReferrerLinks(ctx,
-		rootPath,
-		ms.blobStore.driver,
-		ms.repository.statter,
-		ms,
-		repositoryName,
-		map[digest.Digest]struct{}{},
-		artifactManifestIndex,
-		artifactSweepIngestor)
-
-	if err != nil {
-		if _, ok := err.(driver.PathNotFoundError); !ok {
-			return err
-		}
-	}
-	// delete the artifact manifest revision and the _refs directory for each artifact indexed
-	for key := range artifactManifestIndex {
-		err := ms.blobStore.Delete(ctx, key)
-		if err != nil {
-			return err
-		}
-	}
-	// delete the manifest revision and the _refs directory for original manifest
 	return ms.blobStore.Delete(ctx, dgst)
 }
 

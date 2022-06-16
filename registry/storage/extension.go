@@ -2,10 +2,8 @@ package storage
 
 import (
 	"context"
-	"path"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/registry/storage/driver"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 )
@@ -15,14 +13,6 @@ type ReadOnlyBlobStore interface {
 	distribution.BlobEnumerator
 	distribution.BlobStatter
 	distribution.BlobProvider
-}
-
-// ExtendedStorage defines extensions to store operations like manifest for example.
-type ExtendedStorage interface {
-	// GetManifestHandlers returns the list of manifest handlers that handle custom manifest formats supported by the extensions.
-	GetManifestHandlers(
-		repo distribution.Repository,
-		blobStore distribution.BlobStore) []ManifestHandler
 }
 
 // GetManifestLinkReadOnlyBlobStore will enable extensions to access the underlying linked blob store for readonly operations.
@@ -116,73 +106,4 @@ func GetTagLinkReadOnlyBlobStore(
 			tag:  tag,
 		},
 	}
-}
-
-func EnumerateReferrerLinks(ctx context.Context,
-	rootPath string,
-	stDriver storagedriver.StorageDriver,
-	blobStatter distribution.BlobStatter,
-	manifestService distribution.ManifestService,
-	repositoryName string,
-	markSet map[digest.Digest]struct{},
-	artifactManifestIndex map[digest.Digest]ArtifactManifestDel,
-	ingestor func(ctx context.Context,
-		digest digest.Digest,
-		manifestService distribution.ManifestService,
-		markSet map[digest.Digest]struct{},
-		artifactManifestIndex map[digest.Digest]ArtifactManifestDel,
-		repoName string,
-		storageDriver driver.StorageDriver,
-		blobStatter distribution.BlobStatter) error) error {
-
-	return stDriver.Walk(ctx, rootPath, func(fileInfo driver.FileInfo) error {
-		// exit early if directory...
-		if fileInfo.IsDir() {
-			return nil
-		}
-		filePath := fileInfo.Path()
-
-		// check if it's a link
-		_, fileName := path.Split(filePath)
-		if fileName != "link" {
-			return nil
-		}
-
-		// read the digest found in link
-		digest, err := readlink(ctx, filePath, stDriver)
-		if err != nil {
-			return err
-		}
-
-		// ensure this conforms to the linkPathFns
-		_, err = blobStatter.Stat(ctx, digest)
-		if err != nil {
-			// we expect this error to occur so we move on
-			if err == distribution.ErrBlobUnknown {
-				return nil
-			}
-			return err
-		}
-
-		err = ingestor(ctx, digest, manifestService, markSet, artifactManifestIndex, repositoryName, stDriver, blobStatter)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-}
-
-func readlink(ctx context.Context, path string, stDriver storagedriver.StorageDriver) (digest.Digest, error) {
-	content, err := stDriver.GetContent(ctx, path)
-	if err != nil {
-		return "", err
-	}
-
-	linked, err := digest.Parse(string(content))
-	if err != nil {
-		return "", err
-	}
-
-	return linked, nil
 }

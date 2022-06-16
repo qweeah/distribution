@@ -25,7 +25,7 @@ type registry struct {
 	blobDescriptorServiceFactory distribution.BlobDescriptorServiceFactory
 	manifestURLs                 manifestURLs
 	driver                       storagedriver.StorageDriver
-	extendedStorages             []ExtendedStorage
+	extendedNamespaces           []distribution.Extension
 }
 
 // manifestURLs holds regular expressions for controlling manifest URL whitelisting
@@ -37,11 +37,11 @@ type manifestURLs struct {
 // RegistryOption is the type used for functional options for NewRegistry.
 type RegistryOption func(*registry) error
 
-// AddExtendedStorage is a functional option for NewRegistry. It adds the given
-// extended storage to the list of extended storages in the registry.
-func AddExtendedStorage(extendedStorage ExtendedStorage) RegistryOption {
+// AddExtendedNamespace is a functional option for NewRegistry. It adds the given
+// extended namespace to the list of extended namespaces in the registry.
+func AddExtendedNamespace(extendedNamespace distribution.Extension) RegistryOption {
 	return func(registry *registry) error {
-		registry.extendedStorages = append(registry.extendedStorages, extendedStorage)
+		registry.extendedNamespaces = append(registry.extendedNamespaces, extendedNamespace)
 		return nil
 	}
 }
@@ -199,6 +199,10 @@ func (reg *registry) BlobStatter() distribution.BlobStatter {
 	return reg.statter
 }
 
+func (reg *registry) Extensions() []distribution.Extension {
+	return reg.extendedNamespaces
+}
+
 // repository provides name-scoped access to various services.
 type repository struct {
 	*registry
@@ -258,7 +262,7 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 		linkDirectoryPathSpec: manifestDirectoryPathSpec,
 	}
 
-	var v1Handler ManifestHandler
+	var v1Handler distribution.ManifestHandler
 	if repo.schema1Enabled {
 		v1Handler = &signedManifestHandler{
 			ctx:               ctx,
@@ -277,8 +281,8 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 		}
 	}
 
-	var extensionManifestHandlers []ManifestHandler
-	for _, ext := range repo.registry.extendedStorages {
+	var extensionManifestHandlers []distribution.ManifestHandler
+	for _, ext := range repo.registry.extendedNamespaces {
 		handlers := ext.GetManifestHandlers(repo, blobStore)
 		if len(handlers) > 0 {
 			extensionManifestHandlers = append(extensionManifestHandlers, handlers...)

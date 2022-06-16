@@ -26,7 +26,7 @@ type schema2ManifestHandler struct {
 	manifestURLs manifestURLs
 }
 
-var _ ManifestHandler = &schema2ManifestHandler{}
+var _ distribution.ManifestHandler = &schema2ManifestHandler{}
 
 func (ms *schema2ManifestHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
 	dcontext.GetLogger(ms.ctx).Debug("(*schema2ManifestHandler).Unmarshal")

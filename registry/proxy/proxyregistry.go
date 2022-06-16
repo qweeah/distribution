@@ -189,6 +189,10 @@ func (pr *proxyingRegistry) BlobStatter() distribution.BlobStatter {
 	return pr.embedded.BlobStatter()
 }
 
+func (pr *proxyingRegistry) Extensions() []distribution.Extension {
+	return []distribution.Extension{}
+}
+
 // authChallenger encapsulates a request to the upstream to establish credential challenges
 type authChallenger interface {
 	tryEstablishChallenges(context.Context) error

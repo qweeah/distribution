@@ -17,7 +17,7 @@ type manifestListHandler struct {
 	ctx        context.Context
 }
 
-var _ ManifestHandler = &manifestListHandler{}
+var _ distribution.ManifestHandler = &manifestListHandler{}
 
 func (ms *manifestListHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
 	dcontext.GetLogger(ms.ctx).Debug("(*manifestListHandler).Unmarshal")

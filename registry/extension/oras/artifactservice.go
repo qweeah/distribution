@@ -9,8 +9,6 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/registry/extension"
-	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -22,7 +20,7 @@ type ArtifactService interface {
 
 // referrersHandler handles http operations on manifest referrers.
 type referrersHandler struct {
-	extContext    *extension.Context
+	extContext    *distribution.ExtensionContext
 	storageDriver driver.StorageDriver
 
 	// Digest is the target manifest's digest.
@@ -52,19 +50,19 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 
 	blobStatter := h.extContext.Registry.BlobStatter()
 	rootPath := path.Join(referrersLinkPath(repo.Named().Name()), revision.Algorithm().String(), revision.Hex())
-	err = storage.EnumerateReferrerLinks(ctx,
+	err = enumerateReferrerLinks(ctx,
 		rootPath,
 		h.storageDriver,
 		blobStatter,
 		manifests,
 		repo.Named().Name(),
 		map[digest.Digest]struct{}{},
-		map[digest.Digest]storage.ArtifactManifestDel{},
+		map[digest.Digest]artifactManifestDel{},
 		func(ctx context.Context,
 			referrerRevision digest.Digest,
 			manifestService distribution.ManifestService,
 			markSet map[digest.Digest]struct{},
-			artifactManifestIndex map[digest.Digest]storage.ArtifactManifestDel,
+			artifactManifestIndex map[digest.Digest]artifactManifestDel,
 			repoName string,
 			storageDriver driver.StorageDriver,
 			blobStatter distribution.BlobStatter) error {
@@ -131,4 +129,73 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 	// append the descriptors, which don't have a created annotation, to the end
 	referrersSorted = append(referrersSorted, referrersUnsorted...)
 	return referrersSorted, nil
+}
+
+func enumerateReferrerLinks(ctx context.Context,
+	rootPath string,
+	stDriver driver.StorageDriver,
+	blobStatter distribution.BlobStatter,
+	manifestService distribution.ManifestService,
+	repositoryName string,
+	markSet map[digest.Digest]struct{},
+	artifactManifestIndex map[digest.Digest]artifactManifestDel,
+	ingestor func(ctx context.Context,
+		digest digest.Digest,
+		manifestService distribution.ManifestService,
+		markSet map[digest.Digest]struct{},
+		artifactManifestIndex map[digest.Digest]artifactManifestDel,
+		repoName string,
+		storageDriver driver.StorageDriver,
+		blobStatter distribution.BlobStatter) error) error {
+
+	return stDriver.Walk(ctx, rootPath, func(fileInfo driver.FileInfo) error {
+		// exit early if directory...
+		if fileInfo.IsDir() {
+			return nil
+		}
+		filePath := fileInfo.Path()
+
+		// check if it's a link
+		_, fileName := path.Split(filePath)
+		if fileName != "link" {
+			return nil
+		}
+
+		// read the digest found in link
+		digest, err := readlink(ctx, filePath, stDriver)
+		if err != nil {
+			return err
+		}
+
+		// ensure this conforms to the linkPathFns
+		_, err = blobStatter.Stat(ctx, digest)
+		if err != nil {
+			// we expect this error to occur so we move on
+			if err == distribution.ErrBlobUnknown {
+				return nil
+			}
+			return err
+		}
+
+		err = ingestor(ctx, digest, manifestService, markSet, artifactManifestIndex, repositoryName, stDriver, blobStatter)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func readlink(ctx context.Context, path string, stDriver driver.StorageDriver) (digest.Digest, error) {
+	content, err := stDriver.GetContent(ctx, path)
+	if err != nil {
+		return "", err
+	}
+
+	linked, err := digest.Parse(string(content))
+	if err != nil {
+		return "", err
+	}
+
+	return linked, nil
 }
