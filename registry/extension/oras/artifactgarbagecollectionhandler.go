@@ -6,6 +6,7 @@ import (
 	"path"
 
 	"github.com/distribution/distribution/v3"
+	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
@@ -153,17 +154,32 @@ func (gc *orasGCHandler) Sweep(ctx context.Context,
 	registry distribution.Namespace,
 	dryRun bool,
 	removeUntagged bool) error {
-	vacuum := storage.NewVacuum(ctx, storageDriver)
+	vacuum := storage.NewVacuum(ctx, storageDriver, registry)
 	if !dryRun {
 		// remove each artifact in the index
 		for artifactDigest, obj := range gc.artifactManifestIndex {
-			err := vacuum.RemoveArtifactManifest(obj.name, artifactDigest)
+			err := vacuum.RemoveManifest(obj.name, artifactDigest, []string{})
 			if err != nil {
 				return fmt.Errorf("failed to delete artifact manifest %s: %v", artifactDigest, err)
 			}
 		}
 	}
 
+	return nil
+}
+
+func (gc *orasGCHandler) RemoveManifestVacuum(ctx context.Context, storageDriver driver.StorageDriver, dgst digest.Digest, repositoryName string) error {
+	referrerRootPath := referrersLinkPath(repositoryName)
+	fullArtifactManifestPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
+	dcontext.GetLogger(ctx).Infof("deleting manifest ref folder: %s", fullArtifactManifestPath)
+	err := storageDriver.Delete(ctx, fullArtifactManifestPath)
+	if err != nil {
+		switch err.(type) {
+		case driver.PathNotFoundError:
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 

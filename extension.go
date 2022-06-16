@@ -56,6 +56,10 @@ type GCExtensionHandler interface {
 		registry Namespace,
 		dryRun bool,
 		removeUntagged bool) error
+	RemoveManifestVacuum(ctx context.Context,
+		storageDriver driver.StorageDriver,
+		dgst digest.Digest,
+		repositoryName string) error
 }
 
 // ExtendedStorage defines extensions to store operations like manifest for example.

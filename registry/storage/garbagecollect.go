@@ -130,7 +130,7 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 	}
 
 	// sweep
-	vacuum := NewVacuum(ctx, storageDriver)
+	vacuum := NewVacuum(ctx, storageDriver, registry)
 	if !opts.DryRun {
 		for _, obj := range manifestArr {
 			err = vacuum.RemoveManifest(obj.Name, obj.Digest, obj.Tags)

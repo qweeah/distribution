@@ -2,8 +2,10 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"path"
 
+	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
@@ -15,17 +17,19 @@ import (
 // https://en.wikipedia.org/wiki/Consistency_model
 
 // NewVacuum creates a new Vacuum
-func NewVacuum(ctx context.Context, driver driver.StorageDriver) Vacuum {
+func NewVacuum(ctx context.Context, driver driver.StorageDriver, registry distribution.Namespace) Vacuum {
 	return Vacuum{
-		ctx:    ctx,
-		driver: driver,
+		ctx:      ctx,
+		driver:   driver,
+		registry: registry,
 	}
 }
 
 // Vacuum removes content from the filesystem
 type Vacuum struct {
-	driver driver.StorageDriver
-	ctx    context.Context
+	driver   driver.StorageDriver
+	ctx      context.Context
+	registry distribution.Namespace
 }
 
 // RemoveBlob removes a blob from the filesystem
@@ -84,23 +88,21 @@ func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) e
 	dcontext.GetLogger(v.ctx).Infof("deleting manifest: %s", manifestPath)
 	err = v.driver.Delete(v.ctx, manifestPath)
 	if err != nil {
-		return err
+		if _, ok := err.(driver.PathNotFoundError); !ok {
+			return err
+		}
 	}
 
-	referrerRootPath, err := pathFor(referrersRootPathSpec{name: name})
-	if err != nil {
-		return err
-	}
-	fullArtifactManifestPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
-	dcontext.GetLogger(v.ctx).Infof("deleting manifest ref folder: %s", fullArtifactManifestPath)
-	v.driver.Delete(v.ctx, fullArtifactManifestPath)
-	if err != nil {
-		switch err.(type) {
-		case driver.PathNotFoundError:
-			return nil
+	for _, extNamespace := range v.registry.Extensions() {
+		handlers := extNamespace.GetGarbageCollectionHandlers()
+		for _, gcHandler := range handlers {
+			err := gcHandler.RemoveManifestVacuum(v.ctx, v.driver, dgst, name)
+			if err != nil {
+				return fmt.Errorf("failed to call remove manifest extension handler: %v", err)
+			}
 		}
-		return err
 	}
+
 	return nil
 }
 
@@ -118,35 +120,5 @@ func (v Vacuum) RemoveRepository(repoName string) error {
 		return err
 	}
 
-	return nil
-}
-
-// RemoveArtifactManifest removes a artifact manifest from the filesystem
-// Removes manifest revision file and manifest ref folder if it exists
-func (v Vacuum) RemoveArtifactManifest(name string, artifactDgst digest.Digest) error {
-	manifestPath, err := pathFor(manifestRevisionPathSpec{name: name, revision: artifactDgst})
-	if err != nil {
-		return err
-	}
-	dcontext.GetLogger(v.ctx).Infof("deleting artifact manifest: %s", manifestPath)
-	err = v.driver.Delete(v.ctx, manifestPath)
-	if err != nil {
-		return err
-	}
-
-	referrerRootPath, err := pathFor(referrersRootPathSpec{name: name})
-	if err != nil {
-		return err
-	}
-	fullArtifactManifestPath := path.Join(referrerRootPath, artifactDgst.Algorithm().String(), artifactDgst.Hex())
-	dcontext.GetLogger(v.ctx).Infof("deleting artifact manifest ref: %s", fullArtifactManifestPath)
-	err = v.driver.Delete(v.ctx, fullArtifactManifestPath)
-	if err != nil {
-		switch err.(type) {
-		case driver.PathNotFoundError:
-			return nil
-		}
-		return err
-	}
 	return nil
 }
