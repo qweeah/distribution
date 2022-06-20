@@ -57,12 +57,14 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 		manifests,
 		repo.Named().Name(),
 		map[digest.Digest]struct{}{},
-		map[digest.Digest]artifactManifestDel{},
+		revision,
+		map[digest.Digest][]digest.Digest{},
 		func(ctx context.Context,
 			referrerRevision digest.Digest,
 			manifestService distribution.ManifestService,
 			markSet map[digest.Digest]struct{},
-			artifactManifestIndex map[digest.Digest]artifactManifestDel,
+			subjectRevision digest.Digest,
+			artifactManifestIndex map[digest.Digest][]digest.Digest,
 			repoName string,
 			storageDriver driver.StorageDriver,
 			blobStatter distribution.BlobStatter) error {
@@ -138,12 +140,14 @@ func enumerateReferrerLinks(ctx context.Context,
 	manifestService distribution.ManifestService,
 	repositoryName string,
 	markSet map[digest.Digest]struct{},
-	artifactManifestIndex map[digest.Digest]artifactManifestDel,
+	subjectRevision digest.Digest,
+	artifactManifestIndex map[digest.Digest][]digest.Digest,
 	ingestor func(ctx context.Context,
 		digest digest.Digest,
 		manifestService distribution.ManifestService,
 		markSet map[digest.Digest]struct{},
-		artifactManifestIndex map[digest.Digest]artifactManifestDel,
+		subjectRevision digest.Digest,
+		artifactManifestIndex map[digest.Digest][]digest.Digest,
 		repoName string,
 		storageDriver driver.StorageDriver,
 		blobStatter distribution.BlobStatter) error) error {
@@ -177,7 +181,15 @@ func enumerateReferrerLinks(ctx context.Context,
 			return err
 		}
 
-		err = ingestor(ctx, digest, manifestService, markSet, artifactManifestIndex, repositoryName, stDriver, blobStatter)
+		err = ingestor(ctx,
+			digest,
+			manifestService,
+			markSet,
+			subjectRevision,
+			artifactManifestIndex,
+			repositoryName,
+			stDriver,
+			blobStatter)
 		if err != nil {
 			return err
 		}

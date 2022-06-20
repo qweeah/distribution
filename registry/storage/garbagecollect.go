@@ -68,7 +68,6 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 					return fmt.Errorf("failed to retrieve tags for digest %v: %v", dgst, err)
 				}
 				if len(tags) == 0 {
-					emit("manifest eligible for deletion: %s", dgst)
 					// fetch all tags from repository
 					// all of these tags could contain manifest in history
 					// which means that we need check (and delete) those references when deleting manifest
@@ -76,7 +75,22 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 					if err != nil {
 						return fmt.Errorf("failed to retrieve tags %v", err)
 					}
-					manifestArr = append(manifestArr, ManifestDel{Name: repoName, Digest: dgst, Tags: allTags})
+					isEligibleForDelete := true
+					for _, extNamespace := range registry.Extensions() {
+						handlers := extNamespace.GetGarbageCollectionHandlers()
+						for _, gcHandler := range handlers {
+							extensionDeleteEligible, err := gcHandler.IsEligibleForDeletion(ctx, dgst, manifestService)
+							if err != nil {
+								return fmt.Errorf("failed to determine deletion eligibility using extension handler: %v", err)
+							}
+
+							isEligibleForDelete = isEligibleForDelete && extensionDeleteEligible
+						}
+					}
+					if isEligibleForDelete {
+						manifestArr = append(manifestArr, ManifestDel{Name: repoName, Digest: dgst, Tags: allTags})
+						emit("manifest eligible for deletion: %s", dgst)
+					}
 					return nil
 				}
 			}
@@ -162,17 +176,5 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 			return fmt.Errorf("failed to delete blob %s: %v", dgst, err)
 		}
 	}
-
-	// call GC extension handlers' sweep
-	for _, extNamespace := range registry.Extensions() {
-		handlers := extNamespace.GetGarbageCollectionHandlers()
-		for _, gcHandler := range handlers {
-			err := gcHandler.Sweep(ctx, storageDriver, registry, opts.DryRun, opts.RemoveUntagged)
-			if err != nil {
-				return fmt.Errorf("failed to sweep using extension handler: %v", err)
-			}
-		}
-	}
-
 	return err
 }
