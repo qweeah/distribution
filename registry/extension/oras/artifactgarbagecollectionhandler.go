@@ -86,9 +86,8 @@ func (gc *orasGCHandler) Mark(ctx context.Context,
 					err = enumerateReferrerLinks(ctx,
 						rootPath,
 						storageDriver,
+						repository,
 						blobStatter,
-						manifestService,
-						repository.Named().Name(),
 						markSet,
 						dgst,
 						gc.artifactManifestIndex,
@@ -110,9 +109,8 @@ func (gc *orasGCHandler) Mark(ctx context.Context,
 			err = enumerateReferrerLinks(ctx,
 				rootPath,
 				storageDriver,
+				repository,
 				blobStatter,
-				manifestService,
-				repository.Named().Name(),
 				markSet,
 				dgst,
 				gc.artifactManifestIndex,
@@ -201,18 +199,23 @@ func (gc *orasGCHandler) IsEligibleForDeletion(ctx context.Context, dgst digest.
 // marks each artifact manifest and associated blobs
 func artifactMarkIngestor(ctx context.Context,
 	referrerRevision digest.Digest,
-	manifestService distribution.ManifestService,
 	markSet map[digest.Digest]struct{},
 	subjectRevision digest.Digest,
 	artifactManifestIndex map[digest.Digest][]digest.Digest,
-	repoName string,
-	storageDriver driver.StorageDriver,
-	blobStatter distribution.BlobStatter) error {
+	repository distribution.Repository,
+	blobstatter distribution.BlobStatter,
+	storageDriver driver.StorageDriver) error {
+	manifestService, err := repository.Manifests(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to construct manifest service: %v", err)
+	}
+
 	man, err := manifestService.Get(ctx, referrerRevision)
 	if err != nil {
 		return err
 	}
 
+	repoName := repository.Named().Name()
 	// mark the artifact manifest blob
 	fmt.Printf("%s: marking artifact manifest %s\n", repoName, referrerRevision.String())
 	markSet[referrerRevision] = struct{}{}
@@ -237,9 +240,8 @@ func artifactMarkIngestor(ctx context.Context,
 	return enumerateReferrerLinks(ctx,
 		rootPath,
 		storageDriver,
-		blobStatter,
-		manifestService,
-		repoName,
+		repository,
+		blobstatter,
 		markSet,
 		subjectRevision,
 		artifactManifestIndex,
@@ -250,23 +252,29 @@ func artifactMarkIngestor(ctx context.Context,
 // indexes each artifact manifest and adds ArtifactManifestDel struct to index
 func artifactSweepIngestor(ctx context.Context,
 	referrerRevision digest.Digest,
-	manifestService distribution.ManifestService,
 	markSet map[digest.Digest]struct{},
 	subjectRevision digest.Digest,
 	artifactManifestIndex map[digest.Digest][]digest.Digest,
-	repoName string,
-	storageDriver driver.StorageDriver,
-	blobStatter distribution.BlobStatter) error {
-
+	repository distribution.Repository,
+	blobstatter distribution.BlobStatter,
+	storageDriver driver.StorageDriver) error {
+	repoName := repository.Named().Name()
 	// index the manifest
 	fmt.Printf("%s: indexing artifact manifest %s\n", repoName, referrerRevision.String())
-	// TODO: check if the artifact is tagged or not
+	// if artifact is tagged, we don't add artifact and descendants to artifact manifest index
+	tags, err := repository.Tags(ctx).Lookup(ctx, distribution.Descriptor{Digest: referrerRevision})
+	if err != nil {
+		return fmt.Errorf("failed to retrieve tags for artifact digest %v: %v", referrerRevision, err)
+	}
+	if len(tags) > 0 {
+		return nil
+	}
 	artifactManifestIndex[subjectRevision] = append(artifactManifestIndex[subjectRevision], referrerRevision)
 
 	referrerRootPath := referrersLinkPath(repoName)
 
 	rootPath := path.Join(referrerRootPath, referrerRevision.Algorithm().String(), referrerRevision.Hex())
-	_, err := storageDriver.Stat(ctx, rootPath)
+	_, err = storageDriver.Stat(ctx, rootPath)
 	if err != nil {
 		switch err.(type) {
 		case driver.PathNotFoundError:
@@ -277,9 +285,8 @@ func artifactSweepIngestor(ctx context.Context,
 	return enumerateReferrerLinks(ctx,
 		rootPath,
 		storageDriver,
-		blobStatter,
-		manifestService,
-		repoName,
+		repository,
+		blobstatter,
 		markSet,
 		subjectRevision,
 		artifactManifestIndex,

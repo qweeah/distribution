@@ -53,21 +53,19 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 	err = enumerateReferrerLinks(ctx,
 		rootPath,
 		h.storageDriver,
+		repo,
 		blobStatter,
-		manifests,
-		repo.Named().Name(),
 		map[digest.Digest]struct{}{},
 		revision,
 		map[digest.Digest][]digest.Digest{},
 		func(ctx context.Context,
 			referrerRevision digest.Digest,
-			manifestService distribution.ManifestService,
 			markSet map[digest.Digest]struct{},
 			subjectRevision digest.Digest,
 			artifactManifestIndex map[digest.Digest][]digest.Digest,
-			repoName string,
-			storageDriver driver.StorageDriver,
-			blobStatter distribution.BlobStatter) error {
+			repository distribution.Repository,
+			blobstatter distribution.BlobStatter,
+			storageDriver driver.StorageDriver) error {
 			man, err := manifests.Get(ctx, referrerRevision)
 			if err != nil {
 				return err
@@ -136,21 +134,19 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 func enumerateReferrerLinks(ctx context.Context,
 	rootPath string,
 	stDriver driver.StorageDriver,
-	blobStatter distribution.BlobStatter,
-	manifestService distribution.ManifestService,
-	repositoryName string,
+	repository distribution.Repository,
+	blobstatter distribution.BlobStatter,
 	markSet map[digest.Digest]struct{},
 	subjectRevision digest.Digest,
 	artifactManifestIndex map[digest.Digest][]digest.Digest,
 	ingestor func(ctx context.Context,
 		digest digest.Digest,
-		manifestService distribution.ManifestService,
 		markSet map[digest.Digest]struct{},
 		subjectRevision digest.Digest,
 		artifactManifestIndex map[digest.Digest][]digest.Digest,
-		repoName string,
-		storageDriver driver.StorageDriver,
-		blobStatter distribution.BlobStatter) error) error {
+		repository distribution.Repository,
+		blobstatter distribution.BlobStatter,
+		storageDriver driver.StorageDriver) error) error {
 
 	return stDriver.Walk(ctx, rootPath, func(fileInfo driver.FileInfo) error {
 		// exit early if directory...
@@ -172,7 +168,7 @@ func enumerateReferrerLinks(ctx context.Context,
 		}
 
 		// ensure this conforms to the linkPathFns
-		_, err = blobStatter.Stat(ctx, digest)
+		_, err = blobstatter.Stat(ctx, digest)
 		if err != nil {
 			// we expect this error to occur so we move on
 			if err == distribution.ErrBlobUnknown {
@@ -183,13 +179,12 @@ func enumerateReferrerLinks(ctx context.Context,
 
 		err = ingestor(ctx,
 			digest,
-			manifestService,
 			markSet,
 			subjectRevision,
 			artifactManifestIndex,
-			repositoryName,
-			stDriver,
-			blobStatter)
+			repository,
+			blobstatter,
+			stDriver)
 		if err != nil {
 			return err
 		}
