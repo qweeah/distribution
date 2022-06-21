@@ -93,3 +93,11 @@ This results in an addition to the index as shown below.
                                 └── 333ic0c33ebc4a74a0a554c86ac2b28ddf3454a5ad9cf90ea8cea9f9e75c333i
                                     └── link
 ```
+
+## Garbage Collection With Referrers
+
+The life of a referrer artifact is directly linked to its subject. When a referrer artifact's subject manifest is deleted, the artifact's referrers are also deleted. 
+
+Manifest garbage collection is extended to include referrer artifact collection. During the marking process, each manifest is queried for any referrer artifacts by enumerating the link files at the path `repositories/<repository-name>/_refs/subjects/sha256/<subject-digest>`. For each artifact, the artifact manifest and its blobs are marked. Finally, collection recurses to look for further referrers to mark in a similar fashion.
+
+If a manifest is indexed for deletion because it is untagged, the attached reference artifacts are also indexed. Similar to the marking process, the subject manifest's `_ref` folder is queried for referrers. Each encountered referrer is indexed. Indexing recurses to the next levels referrers until all successive referrers are indexed. Finally, during manifest link deletion, the revision link files of the indexed artifact manifests as well as the corresponding `_refs` are removed from storage. 

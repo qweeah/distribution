@@ -122,11 +122,3 @@ blob eligible for deletion: sha256:87192bdbe00f8f2a62527f36bb4c7c7f4eaf9307e4b87
 blob eligible for deletion: sha256:b549a9959a664038fc35c155a95742cf12297672ca0ae35735ec027d55bf4e97
 blob eligible for deletion: sha256:f251d679a7c61455f06d793e43c06786d7766c88b8c24edf242b2c08e3c3f599
 ```
-
-## Garbage Collection With Referrers
-
-The life of a reference artifact is directly linked to its subject. When a reference artifact's subject manifest is deleted, the attached artifacts and its descendants must be deleted.
-
-Manifest garbage collection is extended to include reference artifact collection. During the marking process, each manifest is queried for any reference artifacts by enumerating the link files at the path `repositories/<repository-name>/_refs/subjects/sha256/<subject-digest>`. For each artifact, the artifact manifest and its blobs are marked. Finally, collection recurses to look for further artifact descendants to mark in a similar fashion.
-
-If a manifest is indexed for deletion because it is untagged, the attached reference artifacts are also indexed. Similar to the marking process, the subject manifest's `_ref` folder is queried for reference artifact descendants. Each encountered descendant is indexed. Indexing recurses to the next levels of descendants until all successor artifacts are indexed. Finally, during manifest link deletion, the revision link files of the indexed artifact manifests as well as the corresponding `_refs` are removed from storage. 
