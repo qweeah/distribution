@@ -32,7 +32,7 @@ type distributionOptions struct {
 }
 
 // newDistNamespace creates a new extension namespace with the name "distribution"
-func newDistNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.ExtendedNamespace, error) {
+func newDistNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.Extension, error) {
 
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {

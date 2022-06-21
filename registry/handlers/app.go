@@ -97,7 +97,7 @@ type App struct {
 	repositoryExtensions []string
 
 	// extensionNamespaces is a list of namespaces that are configured as extensions to the distribution
-	extensionNamespaces []distribution.ExtendedNamespace
+	extensionNamespaces []distribution.Extension
 }
 
 // NewApp takes a configuration and returns a configured app, ready to serve
@@ -926,7 +926,7 @@ func (app *App) nameRequired(r *http.Request) bool {
 
 func (app *App) initializeExtensionNamespaces(ctx context.Context, extensions map[string]configuration.ExtensionConfig) error {
 
-	extensionNamespaces := []distribution.ExtendedNamespace{}
+	extensionNamespaces := []distribution.Extension{}
 	for key, options := range extensions {
 		ns, err := distribution.GetExtension(ctx, key, app.driver, options)
 		if err != nil {

@@ -30,7 +30,7 @@ type ociOptions struct {
 }
 
 // newOciNamespace creates a new extension namespace with the name "oci"
-func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.ExtendedNamespace, error) {
+func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.Extension, error) {
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {
 		return nil, err

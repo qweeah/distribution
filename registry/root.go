@@ -73,7 +73,7 @@ var GCCmd = &cobra.Command{
 		}
 
 		extensions := config.Extensions
-		extensionNamespaces := []distribution.ExtendedNamespace{}
+		extensionNamespaces := []distribution.Extension{}
 		for key, options := range extensions {
 			ns, err := distribution.GetExtension(ctx, key, driver, options)
 			if err != nil {

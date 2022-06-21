@@ -12,10 +12,6 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
-type Extension interface {
-	ExtendedNamespace
-}
-
 // ExtensionContext contains the request specific context for use in across handlers.
 type ExtensionContext struct {
 	context.Context
@@ -70,7 +66,7 @@ type ExtendedStorage interface {
 }
 
 //Namespace is the namespace that is used to define extensions to the distribution.
-type ExtendedNamespace interface {
+type Extension interface {
 	ExtendedStorage
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level
 	GetRepositoryRoutes() []ExtensionRoute
@@ -84,8 +80,8 @@ type ExtendedNamespace interface {
 	GetNamespaceDescription() string
 }
 
-// // InitExtensionNamespace is the initialize function for creating the extension namespace
-type InitExtensionNamespace func(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (ExtendedNamespace, error)
+// InitExtension is the initialize function for creating the extension namespace
+type InitExtension func(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Extension, error)
 
 // EnumerateExtension specifies extension information at the namespace level
 type EnumerateExtension struct {
@@ -95,8 +91,8 @@ type EnumerateExtension struct {
 	Endpoints   []string `json:"endpoints"`
 }
 
-var extensions map[string]InitExtensionNamespace
-var extensionsNamespaces map[string]ExtendedNamespace
+var extensions map[string]InitExtension
+var extensionsNamespaces map[string]Extension
 
 func EnumerateRegistered(ctx ExtensionContext) (enumeratedExtensions []EnumerateExtension) {
 	for _, namespace := range extensionsNamespaces {
@@ -128,11 +124,11 @@ func EnumerateRegistered(ctx ExtensionContext) (enumeratedExtensions []Enumerate
 	return enumeratedExtensions
 }
 
-// RegisterExtension is used to register an InitExtensionNamespace for
-// an extension namespace with the given name.
-func RegisterExtension(name string, initFunc InitExtensionNamespace) {
+// RegisterExtension is used to register an InitExtension for
+// an extension with the given name.
+func RegisterExtension(name string, initFunc InitExtension) {
 	if extensions == nil {
-		extensions = make(map[string]InitExtensionNamespace)
+		extensions = make(map[string]InitExtension)
 	}
 
 	if _, exists := extensions[name]; exists {
@@ -142,11 +138,11 @@ func RegisterExtension(name string, initFunc InitExtensionNamespace) {
 	extensions[name] = initFunc
 }
 
-// GetExtension constructs an extension namespace with the given options using the given name.
-func GetExtension(ctx context.Context, name string, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (ExtendedNamespace, error) {
+// GetExtension constructs an extension with the given options using the given name.
+func GetExtension(ctx context.Context, name string, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Extension, error) {
 	if extensions != nil {
 		if extensionsNamespaces == nil {
-			extensionsNamespaces = make(map[string]ExtendedNamespace)
+			extensionsNamespaces = make(map[string]Extension)
 		}
 
 		if initFunc, exists := extensions[name]; exists {

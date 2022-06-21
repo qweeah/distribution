@@ -33,7 +33,7 @@ type OrasOptions struct {
 }
 
 // newOrasNamespace creates a new extension namespace with the name "oras"
-func newOrasNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.ExtendedNamespace, error) {
+func newOrasNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.Extension, error) {
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {
 		return nil, err
