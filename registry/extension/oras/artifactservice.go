@@ -71,13 +71,13 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 				return err
 			}
 
-			ArtifactMan, ok := man.(*DeserializedManifest)
+			artifactManifest, ok := man.(*DeserializedManifest)
 			if !ok {
 				// The PUT handler would guard against this situation. Skip this manifest.
 				return nil
 			}
 
-			extractedArtifactType := ArtifactMan.ArtifactType()
+			extractedArtifactType := artifactManifest.ArtifactType()
 
 			// filtering by artifact type or bypass if no artifact type specified
 			if artifactType == "" || extractedArtifactType == artifactType {
@@ -93,7 +93,7 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 					ArtifactType: extractedArtifactType,
 				}
 
-				if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
+				if annotation, ok := artifactManifest.Annotations()[createAnnotationName]; !ok {
 					referrersUnsorted = append(referrersUnsorted, artifactDesc)
 				} else {
 					extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)

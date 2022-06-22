@@ -62,10 +62,11 @@ type ExtendedStorage interface {
 	GetManifestHandlers(
 		repo Repository,
 		blobStore BlobStore) []ManifestHandler
+	// GetGarbageCollectHandlers returns the list of GC handlers that handle custom garbage collection behavior for the extensions
 	GetGarbageCollectionHandlers() []GCExtensionHandler
 }
 
-//Namespace is the namespace that is used to define extensions to the distribution.
+// Extension is the interface that is used to define extensions to the distribution.
 type Extension interface {
 	ExtendedStorage
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level

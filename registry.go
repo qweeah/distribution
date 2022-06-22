@@ -48,6 +48,7 @@ type Namespace interface {
 	// BlobStatter returns a BlobStatter to control
 	BlobStatter() BlobStatter
 
+	// Extensions returns a list of Extension registered to the Namespace
 	Extensions() []Extension
 }
 
