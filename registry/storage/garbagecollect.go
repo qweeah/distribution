@@ -75,7 +75,6 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 					if err != nil {
 						return fmt.Errorf("failed to retrieve tags %v", err)
 					}
-					isEligibleForDelete := true
 					for _, extNamespace := range registry.Extensions() {
 						handlers := extNamespace.GetGarbageCollectionHandlers()
 						for _, gcHandler := range handlers {
@@ -83,14 +82,13 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 							if err != nil {
 								return fmt.Errorf("failed to determine deletion eligibility using extension handler: %v", err)
 							}
-
-							isEligibleForDelete = isEligibleForDelete && extensionDeleteEligible
+							if !extensionDeleteEligible {
+								return nil
+							}
 						}
 					}
-					if isEligibleForDelete {
-						manifestArr = append(manifestArr, ManifestDel{Name: repoName, Digest: dgst, Tags: allTags})
-						emit("manifest eligible for deletion: %s", dgst)
-					}
+					manifestArr = append(manifestArr, ManifestDel{Name: repoName, Digest: dgst, Tags: allTags})
+					emit("manifest eligible for deletion: %s", dgst)
 					return nil
 				}
 			}

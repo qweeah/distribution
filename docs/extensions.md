@@ -8,7 +8,7 @@ This document serves as a high level discussion of the implementation of the ext
 
 ## Extension Interface
 
-The `Extension` interface is introduced in the `distribution` package. It defines methods to access the extension's namespace specific attributes such as the Name, Url defining the extension namespace, and the Description of the namespace. It defines route enumeration at the Registry and Repository level. It also encases the `ExtendedStorage` interface which defines the methods requires to extend the underlying storage functionality of the registry. 
+The `Extension` interface is introduced in the `distribution` package. It defines methods to access the extension's namespace-specific attributes such as the Name, Url defining the extension namespace, and the Description of the namespace. It defines route enumeration at the Registry and Repository level. It also encases the `ExtendedStorage` interface which defines the methods requires to extend the underlying storage functionality of the registry. 
 
 ```
 type Extension interface {
@@ -26,7 +26,7 @@ type Extension interface {
 }
 ```
 
-The `Namespace` interface in the `distrubtion` package is modified to return a list of `Extensions` registered to the `Namespace`
+The `Namespace` interface in the `distribution` package is modified to return a list of `Extensions` registered to the `Namespace`
 
 ```
 type Namespace interface {
@@ -63,12 +63,12 @@ The `ExtendedStorage` interface defines methods that specify storage-specific ha
 
 ```
 type ExtendedStorage interface {
-	// GetManifestHandlers returns the list of manifest handlers that handle custom manifest formats supported by the extensions.
+	// GetManifestHandlers returns the list of manifest handlers that handle custom manifest formats supported by the extension
 	GetManifestHandlers(
 		repo Repository,
 		blobStore BlobStore) []ManifestHandler
-    // GetGarbageCollectHandlers returns the list of GC handlers that handle custom garbage collection behavior for the extensions
-	GetGarbageCollectionHandlers() []GCExtensionHandler
+    // GetGarbageCollectHandler returns the GCExtensionHandler that handles custom garbage collection behavior for the extension.
+	GetGarbageCollectionHandler() GCExtensionHandler
 }
 ```
 

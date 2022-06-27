@@ -55,7 +55,7 @@ func (v Vacuum) RemoveBlob(dgst string) error {
 }
 
 // RemoveManifest removes a manifest from the filesystem
-// Removes manifest's ref folder if it exists
+// Invokes each GCExtensionHandler's RemoveManifestVacuum
 func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) error {
 	// remove a tag manifest reference, in case of not found continue to next one
 	for _, tag := range tags {
