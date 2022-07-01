@@ -2,6 +2,7 @@ package oci
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/distribution/distribution/v3/registry/api/errcode"
@@ -29,7 +30,7 @@ func (eh *extensionHandler) getExtensions(w http.ResponseWriter, r *http.Request
 
 	// remove the oci extension so it's not returned by discover
 	for i, e := range enumeratedExtensions {
-		if e.Name == namespaceName {
+		if e.Name == fmt.Sprintf("_%s", namespaceName) {
 			enumeratedExtensions = append(enumeratedExtensions[:i], enumeratedExtensions[i+1:]...)
 		}
 	}
