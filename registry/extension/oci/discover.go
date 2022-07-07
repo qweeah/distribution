@@ -29,8 +29,9 @@ func (eh *extensionHandler) getExtensions(w http.ResponseWriter, r *http.Request
 	enumeratedExtensions := extension.EnumerateRegistered(*eh.Context)
 
 	// remove the oci extension so it's not returned by discover
+	ociExtensionName := fmt.Sprintf("_%s", namespaceName)
 	for i, e := range enumeratedExtensions {
-		if e.Name == fmt.Sprintf("_%s", namespaceName) {
+		if e.Name == ociExtensionName {
 			enumeratedExtensions = append(enumeratedExtensions[:i], enumeratedExtensions[i+1:]...)
 		}
 	}

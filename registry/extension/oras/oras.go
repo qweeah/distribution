@@ -93,7 +93,7 @@ func (d *orasNamespace) GetRepositoryRoutes() []extension.Route {
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get all referrers for the given digest ",
+						Description: "Get all referrers for the given digest",
 					},
 				},
 			},
