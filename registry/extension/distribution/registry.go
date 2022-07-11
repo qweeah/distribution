@@ -110,7 +110,7 @@ func (d *distributionNamespace) GetRepositoryRoutes() []extension.Route {
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get a set of digests that the specified tag historically pointed to",
+						Description: "get a set of digests that the specified tag historically pointed to",
 						Requests: []v2.RequestDescriptor{
 							{
 								QueryParameters: []v2.ParameterDescriptor{

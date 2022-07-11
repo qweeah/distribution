@@ -21,7 +21,7 @@ const (
 	extensionName          = "artifacts"
 	referrersComponentName = "referrers"
 	namespaceUrl           = "https://github.com/oras-project/artifacts-spec/blob/main/manifest-referrers-api.md"
-	namespaceDescription   = "oras extension enables listing of all reference artifacts associated with subject."
+	namespaceDescription   = "ORAS referrers listing API."
 )
 
 type orasNamespace struct {
@@ -93,7 +93,7 @@ func (d *orasNamespace) GetRepositoryRoutes() []extension.Route {
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get all referrers for the given digest",
+						Description: "get all referrers for the given digest",
 					},
 				},
 			},

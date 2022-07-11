@@ -84,7 +84,7 @@ func (o *ociNamespace) GetRepositoryRoutes() []extension.Route {
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get all extensions enabled for a repository.",
+						Description: "get all extensions enabled for a repository.",
 					},
 				},
 			},
@@ -106,11 +106,11 @@ func (o *ociNamespace) GetRegistryRoutes() []extension.Route {
 			Component: discoverComponentName,
 			Descriptor: v2.RouteDescriptor{
 				Entity:      "Extension",
-				Description: "discovers extensions enabled at the repository level",
+				Description: "discovers extensions enabled at the registry level",
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get all extensions enabled for a registry.",
+						Description: "get all extensions enabled for a registry.",
 					},
 				},
 			},
