@@ -166,6 +166,15 @@ func TestVerifyArtifactManifestPut(t *testing.T) {
 			template.Annotations(),
 			errInvalidArtifactType,
 		},
+		// no subject
+		{
+			orasartifacts.MediaTypeArtifactManifest,
+			template.inner.ArtifactType,
+			template.inner.Blobs,
+			nil,
+			template.Annotations(),
+			nil,
+		},
 		// invalid subject
 		{
 			orasartifacts.MediaTypeArtifactManifest,
