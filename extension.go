@@ -43,17 +43,19 @@ type ExtensionRoute struct {
 
 type GCExtensionHandler interface {
 	Mark(ctx context.Context,
+		repository Repository,
 		storageDriver driver.StorageDriver,
 		registry Namespace,
+		manifest Manifest,
+		manifestDigest digest.Digest,
 		dryRun bool,
-		removeUntagged bool) (map[digest.Digest]struct{}, error)
+		removeUntagged bool) (map[digest.Digest]struct{}, bool, error)
 	RemoveManifestVacuum(ctx context.Context,
 		storageDriver driver.StorageDriver,
+		registry Namespace,
 		dgst digest.Digest,
-		repositoryName string) error
-	IsEligibleForDeletion(ctx context.Context,
-		dgst digest.Digest,
-		manifestService ManifestService) (bool, error)
+		markSet map[digest.Digest]struct{},
+		repositoryName string) (map[digest.Digest]struct{}, error)
 }
 
 // ExtendedStorage defines extensions to store operations like manifest for example.

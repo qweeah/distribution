@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"path"
 
 	"github.com/distribution/distribution/v3"
@@ -90,16 +89,6 @@ func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) e
 	if err != nil {
 		if _, ok := err.(driver.PathNotFoundError); !ok {
 			return err
-		}
-	}
-
-	for _, extNamespace := range v.registry.Extensions() {
-		handlers := extNamespace.GetGarbageCollectionHandlers()
-		for _, gcHandler := range handlers {
-			err := gcHandler.RemoveManifestVacuum(v.ctx, v.driver, dgst, name)
-			if err != nil {
-				return fmt.Errorf("failed to call remove manifest extension handler: %v", err)
-			}
 		}
 	}
 

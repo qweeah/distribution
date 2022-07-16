@@ -75,15 +75,23 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 					if err != nil {
 						return fmt.Errorf("failed to retrieve tags %v", err)
 					}
+					// call GC extension handlers' mark
+					manifest, err := manifestService.Get(ctx, dgst)
+					if err != nil {
+						return fmt.Errorf("failed to retrieve manifest: %v", err)
+					}
 					for _, extNamespace := range registry.Extensions() {
 						handlers := extNamespace.GetGarbageCollectionHandlers()
 						for _, gcHandler := range handlers {
-							extensionDeleteEligible, err := gcHandler.IsEligibleForDeletion(ctx, dgst, manifestService)
+							extensionMarkSet, deleteEligible, err := gcHandler.Mark(ctx, repository, storageDriver, registry, manifest, dgst, opts.DryRun, opts.RemoveUntagged)
 							if err != nil {
-								return fmt.Errorf("failed to determine deletion eligibility using extension handler: %v", err)
+								return fmt.Errorf("failed to mark using extension handler: %v", err)
 							}
-							if !extensionDeleteEligible {
+							if !deleteEligible {
 								return nil
+							}
+							for k, _ := range extensionMarkSet {
+								markSet[k] = struct{}{}
 							}
 						}
 					}
@@ -126,21 +134,6 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 		return fmt.Errorf("failed to mark: %v", err)
 	}
 
-	// call GC extension handlers' mark
-	for _, extNamespace := range registry.Extensions() {
-		handlers := extNamespace.GetGarbageCollectionHandlers()
-		for _, gcHandler := range handlers {
-			extensionMarkSet, err := gcHandler.Mark(ctx, storageDriver, registry, opts.DryRun, opts.RemoveUntagged)
-			if err != nil {
-				return fmt.Errorf("failed to mark using extension handler: %v", err)
-			}
-
-			for k, _ := range extensionMarkSet {
-				markSet[k] = struct{}{}
-			}
-		}
-	}
-
 	// sweep
 	vacuum := NewVacuum(ctx, storageDriver, registry)
 	if !opts.DryRun {
@@ -148,6 +141,16 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 			err = vacuum.RemoveManifest(obj.Name, obj.Digest, obj.Tags)
 			if err != nil {
 				return fmt.Errorf("failed to delete manifest %s: %v", obj.Digest, err)
+			}
+			for _, extNamespace := range registry.Extensions() {
+				handlers := extNamespace.GetGarbageCollectionHandlers()
+				for _, gcHandler := range handlers {
+					newMarkSet, err := gcHandler.RemoveManifestVacuum(ctx, storageDriver, registry, obj.Digest, markSet, obj.Name)
+					if err != nil {
+						return fmt.Errorf("failed to call remove manifest extension handler: %v", err)
+					}
+					markSet = newMarkSet
+				}
 			}
 		}
 	}
