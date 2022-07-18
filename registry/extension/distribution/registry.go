@@ -20,7 +20,7 @@ const (
 	manifestsComponentName  = "manifests"
 	tagHistoryComponentName = "taghistory"
 	namespaceUrl            = "insert link"
-	namespaceDescription    = "distribution extension adds tag history and manifest list functionality"
+	namespaceDescription    = "distribution extension adds tag history and manifest list functionality."
 )
 
 type distributionNamespace struct {
@@ -86,7 +86,8 @@ func (d *distributionNamespace) GetRepositoryRoutes() []extension.Route {
 			Extension: extensionName,
 			Component: manifestsComponentName,
 			Descriptor: v2.RouteDescriptor{
-				Entity: "Manifest",
+				Entity:      "Manifest",
+				Description: "returns all manifest digests for a repository",
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
@@ -104,11 +105,12 @@ func (d *distributionNamespace) GetRepositoryRoutes() []extension.Route {
 			Extension: extensionName,
 			Component: tagHistoryComponentName,
 			Descriptor: v2.RouteDescriptor{
-				Entity: "TagHistory",
+				Entity:      "TagHistory",
+				Description: "returns digests that previously specified a tag",
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get a set of digests that the specified tag historically pointed to",
+						Description: "get a set of digests that the specified tag historically pointed to",
 						Requests: []v2.RequestDescriptor{
 							{
 								QueryParameters: []v2.ParameterDescriptor{
