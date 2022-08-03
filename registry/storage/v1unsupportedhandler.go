@@ -10,10 +10,10 @@ import (
 // signedManifestHandler is a ManifestHandler that unmarshals v1 manifests but
 // refuses to Put v1 manifests
 type v1UnsupportedHandler struct {
-	innerHandler distribution.ManifestHandler
+	innerHandler ManifestHandler
 }
 
-var _ distribution.ManifestHandler = &v1UnsupportedHandler{}
+var _ ManifestHandler = &v1UnsupportedHandler{}
 
 func (v *v1UnsupportedHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
 	return v.innerHandler.Unmarshal(ctx, dgst, content)

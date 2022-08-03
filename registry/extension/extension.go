@@ -1,15 +1,16 @@
-package distribution
+package extension
 
 import (
 	"context"
 	"fmt"
 	"net/http"
 
+	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/configuration"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
+	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
-	"github.com/opencontainers/go-digest"
 )
 
 // ExtensionContext contains the request specific context for use in across handlers.
@@ -17,9 +18,9 @@ type ExtensionContext struct {
 	context.Context
 
 	// Registry is the base namespace that is used by all extension namespaces
-	Registry Namespace
+	Registry distribution.Namespace
 	// Repository is a reference to a named repository
-	Repository Repository
+	Repository distribution.Repository
 	// Errors are the set of errors that occurred within this request context
 	Errors errcode.Errors
 }
@@ -41,37 +42,9 @@ type ExtensionRoute struct {
 	Dispatcher RouteDispatchFunc
 }
 
-type GCExtensionHandler interface {
-	Mark(ctx context.Context,
-		repository Repository,
-		storageDriver driver.StorageDriver,
-		registry Namespace,
-		manifest Manifest,
-		manifestDigest digest.Digest,
-		dryRun bool,
-		removeUntagged bool) (bool, error)
-	RemoveManifest(ctx context.Context,
-		storageDriver driver.StorageDriver,
-		registry Namespace,
-		dgst digest.Digest,
-		repositoryName string) error
-	SweepBlobs(ctx context.Context,
-		markSet map[digest.Digest]struct{}) map[digest.Digest]struct{}
-}
-
-// ExtendedStorage defines extensions to store operations like manifest for example.
-type ExtendedStorage interface {
-	// GetManifestHandlers returns the list of manifest handlers that handle custom manifest formats supported by the extensions.
-	GetManifestHandlers(
-		repo Repository,
-		blobStore BlobStore) []ManifestHandler
-	// GetGarbageCollectHandlers returns the list of GC handlers that handle custom garbage collection behavior for the extensions
-	GetGarbageCollectionHandlers() []GCExtensionHandler
-}
-
 // Extension is the interface that is used to define extensions to the distribution.
 type Extension interface {
-	ExtendedStorage
+	storage.ExtendedStorage
 	// ExtensionService
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level
 	GetRepositoryRoutes() []ExtensionRoute

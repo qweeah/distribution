@@ -16,6 +16,15 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
+// A ManifestHandler gets and puts manifests of a particular type.
+type ManifestHandler interface {
+	// Unmarshal unmarshals the manifest from a byte slice.
+	Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error)
+
+	// Put creates or updates the given manifest returning the manifest digest.
+	Put(ctx context.Context, manifest distribution.Manifest, skipDependencyVerification bool) (digest.Digest, error)
+}
+
 // SkipLayerVerification allows a manifest to be Put before its
 // layers are on the filesystem
 func SkipLayerVerification() distribution.ManifestServiceOption {
@@ -39,12 +48,12 @@ type manifestStore struct {
 
 	skipDependencyVerification bool
 
-	schema1Handler      distribution.ManifestHandler
-	schema2Handler      distribution.ManifestHandler
-	ocischemaHandler    distribution.ManifestHandler
-	manifestListHandler distribution.ManifestHandler
+	schema1Handler      ManifestHandler
+	schema2Handler      ManifestHandler
+	ocischemaHandler    ManifestHandler
+	manifestListHandler ManifestHandler
 
-	extensionManifestHandlers []distribution.ManifestHandler
+	extensionManifestHandlers []ManifestHandler
 }
 
 var _ distribution.ManifestService = &manifestStore{}

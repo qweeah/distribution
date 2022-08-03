@@ -9,6 +9,7 @@ import (
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/reference"
+	"github.com/distribution/distribution/v3/registry/extension"
 	storage "github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
@@ -16,13 +17,13 @@ import (
 	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
-func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storage.RegistryOption) distribution.Namespace {
+func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storage.RegistryOption) (distribution.Namespace, extension.Extension) {
 	ctx := context.Background()
 	options = append([]storage.RegistryOption{storage.EnableDelete}, options...)
 	extensionConfig := OrasOptions{
 		ArtifactsExtComponents: []string{"referrers"},
 	}
-	ns, err := distribution.GetExtension(ctx, "oras", driver, extensionConfig)
+	ns, err := extension.GetExtension(ctx, "oras", driver, extensionConfig)
 	if err != nil {
 		t.Fatalf("unable to configure extension namespace (%s): %s", "oras", err)
 	}
@@ -31,7 +32,7 @@ func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storag
 	if err != nil {
 		t.Fatalf("failed to construct namespace")
 	}
-	return registry
+	return registry, ns
 }
 
 func makeRepository(t *testing.T, registry distribution.Namespace, name string) distribution.Repository {
@@ -61,7 +62,7 @@ func makeManifestService(t *testing.T, repository distribution.Repository) distr
 func TestVerifyArtifactManifestPut(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
-	registry := createRegistry(t, inmemoryDriver)
+	registry, _ := createRegistry(t, inmemoryDriver)
 	repo := makeRepository(t, registry, "test")
 	manifestService := makeManifestService(t, repo)
 

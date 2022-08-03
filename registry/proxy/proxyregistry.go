@@ -35,7 +35,7 @@ func NewRegistryPullThroughCache(ctx context.Context, registry distribution.Name
 		return nil, err
 	}
 
-	v := storage.NewVacuum(ctx, driver, registry)
+	v := storage.NewVacuum(ctx, driver)
 	s := scheduler.New(ctx, driver, "/scheduler-state.json")
 	s.OnBlobExpire(func(ref reference.Reference) error {
 		var r reference.Canonical
@@ -187,10 +187,6 @@ func (pr *proxyingRegistry) Blobs() distribution.BlobEnumerator {
 
 func (pr *proxyingRegistry) BlobStatter() distribution.BlobStatter {
 	return pr.embedded.BlobStatter()
-}
-
-func (pr *proxyingRegistry) Extensions() []distribution.Extension {
-	return []distribution.Extension{}
 }
 
 // authChallenger encapsulates a request to the upstream to establish credential challenges

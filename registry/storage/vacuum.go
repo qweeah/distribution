@@ -4,7 +4,6 @@ import (
 	"context"
 	"path"
 
-	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
@@ -16,19 +15,17 @@ import (
 // https://en.wikipedia.org/wiki/Consistency_model
 
 // NewVacuum creates a new Vacuum
-func NewVacuum(ctx context.Context, driver driver.StorageDriver, registry distribution.Namespace) Vacuum {
+func NewVacuum(ctx context.Context, driver driver.StorageDriver) Vacuum {
 	return Vacuum{
-		ctx:      ctx,
-		driver:   driver,
-		registry: registry,
+		ctx:    ctx,
+		driver: driver,
 	}
 }
 
 // Vacuum removes content from the filesystem
 type Vacuum struct {
-	driver   driver.StorageDriver
-	ctx      context.Context
-	registry distribution.Namespace
+	driver driver.StorageDriver
+	ctx    context.Context
 }
 
 // RemoveBlob removes a blob from the filesystem

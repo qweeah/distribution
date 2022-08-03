@@ -48,7 +48,7 @@ func allBlobs(t *testing.T, registry distribution.Namespace) map[digest.Digest]s
 func TestReferrersBlobsDeleted(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
-	registry := createRegistry(t, inmemoryDriver)
+	registry, orasExtension := createRegistry(t, inmemoryDriver)
 	repo := makeRepository(t, registry, "test")
 	manifestService := makeManifestService(t, repo)
 	tagService := repo.Tags(ctx)
@@ -140,8 +140,9 @@ func TestReferrersBlobsDeleted(t *testing.T) {
 
 	// Run GC
 	err = storage.MarkAndSweep(ctx, inmemoryDriver, registry, storage.GCOpts{
-		DryRun:         false,
-		RemoveUntagged: true,
+		DryRun:              false,
+		RemoveUntagged:      true,
+		GCExtensionHandlers: orasExtension.GetGarbageCollectionHandlers(),
 	})
 	if err != nil {
 		t.Fatalf("Failed mark and sweep: %v", err)

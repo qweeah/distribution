@@ -7,6 +7,8 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/configuration"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
+	"github.com/distribution/distribution/v3/registry/extension"
+	"github.com/distribution/distribution/v3/registry/storage"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/gorilla/handlers"
 	"gopkg.in/yaml.v2"
@@ -30,7 +32,7 @@ type ociOptions struct {
 }
 
 // newOciNamespace creates a new extension namespace with the name "oci"
-func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (distribution.Extension, error) {
+func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (extension.Extension, error) {
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {
 		return nil, err
@@ -58,26 +60,26 @@ func newOciNamespace(ctx context.Context, storageDriver driver.StorageDriver, op
 
 func init() {
 	// register the extension namespace.
-	distribution.RegisterExtension(namespaceName, newOciNamespace)
+	extension.RegisterExtension(namespaceName, newOciNamespace)
 }
 
 // GetManifestHandlers returns a list of manifest handlers that will be registered in the manifest store.
-func (o *ociNamespace) GetManifestHandlers(repo distribution.Repository, blobStore distribution.BlobStore) []distribution.ManifestHandler {
+func (o *ociNamespace) GetManifestHandlers(repo distribution.Repository, blobStore distribution.BlobStore) []storage.ManifestHandler {
 	// This extension doesn't extend any manifest store operations.
-	return []distribution.ManifestHandler{}
+	return []storage.ManifestHandler{}
 }
 
-func (o *ociNamespace) GetGarbageCollectionHandlers() []distribution.GCExtensionHandler {
+func (o *ociNamespace) GetGarbageCollectionHandlers() []storage.GCExtensionHandler {
 	// This extension doesn't extend any garbage collection operations.
-	return []distribution.GCExtensionHandler{}
+	return []storage.GCExtensionHandler{}
 }
 
 // GetRepositoryRoutes returns a list of extension routes scoped at a repository level
-func (o *ociNamespace) GetRepositoryRoutes() []distribution.ExtensionRoute {
-	var routes []distribution.ExtensionRoute
+func (o *ociNamespace) GetRepositoryRoutes() []extension.ExtensionRoute {
+	var routes []extension.ExtensionRoute
 
 	if o.discoverEnabled {
-		routes = append(routes, distribution.ExtensionRoute{
+		routes = append(routes, extension.ExtensionRoute{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: discoverComponentName,
@@ -98,11 +100,11 @@ func (o *ociNamespace) GetRepositoryRoutes() []distribution.ExtensionRoute {
 }
 
 // GetRegistryRoutes returns a list of extension routes scoped at a registry level
-func (o *ociNamespace) GetRegistryRoutes() []distribution.ExtensionRoute {
-	var routes []distribution.ExtensionRoute
+func (o *ociNamespace) GetRegistryRoutes() []extension.ExtensionRoute {
+	var routes []extension.ExtensionRoute
 
 	if o.discoverEnabled {
-		routes = append(routes, distribution.ExtensionRoute{
+		routes = append(routes, extension.ExtensionRoute{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: discoverComponentName,
@@ -137,7 +139,7 @@ func (o *ociNamespace) GetNamespaceDescription() string {
 	return namespaceDescription
 }
 
-func (o *ociNamespace) discoverDispatcher(ctx *distribution.ExtensionContext, r *http.Request) http.Handler {
+func (o *ociNamespace) discoverDispatcher(ctx *extension.ExtensionContext, r *http.Request) http.Handler {
 	extensionHandler := &extensionHandler{
 		ExtensionContext: ctx,
 		storageDriver:    o.storageDriver,

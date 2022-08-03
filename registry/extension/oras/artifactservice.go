@@ -9,6 +9,7 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/registry/extension"
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -20,7 +21,7 @@ type ArtifactService interface {
 
 // referrersHandler handles http operations on manifest referrers.
 type referrersHandler struct {
-	extContext    *distribution.ExtensionContext
+	extContext    *extension.ExtensionContext
 	storageDriver driver.StorageDriver
 
 	// Digest is the target manifest's digest.

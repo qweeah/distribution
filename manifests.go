@@ -74,16 +74,6 @@ type Describable interface {
 	Descriptor() Descriptor
 }
 
-// TODO: This interface should not live here in the future
-// A ManifestHandler gets and puts manifests of a particular type.
-type ManifestHandler interface {
-	// Unmarshal unmarshals the manifest from a byte slice.
-	Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (Manifest, error)
-
-	// Put creates or updates the given manifest returning the manifest digest.
-	Put(ctx context.Context, manifest Manifest, skipDependencyVerification bool) (digest.Digest, error)
-}
-
 // ManifestMediaTypes returns the supported media types for manifests.
 func ManifestMediaTypes() (mediaTypes []string) {
 	for t := range mappings {

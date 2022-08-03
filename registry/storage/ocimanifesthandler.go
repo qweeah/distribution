@@ -20,7 +20,7 @@ type ocischemaManifestHandler struct {
 	manifestURLs manifestURLs
 }
 
-var _ distribution.ManifestHandler = &ocischemaManifestHandler{}
+var _ ManifestHandler = &ocischemaManifestHandler{}
 
 func (ms *ocischemaManifestHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
 	dcontext.GetLogger(ms.ctx).Debug("(*ocischemaManifestHandler).Unmarshal")

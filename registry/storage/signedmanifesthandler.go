@@ -22,7 +22,7 @@ type signedManifestHandler struct {
 	ctx               context.Context
 }
 
-var _ distribution.ManifestHandler = &signedManifestHandler{}
+var _ ManifestHandler = &signedManifestHandler{}
 
 func (ms *signedManifestHandler) Unmarshal(ctx context.Context, dgst digest.Digest, content []byte) (distribution.Manifest, error) {
 	dcontext.GetLogger(ms.ctx).Debug("(*signedManifestHandler).Unmarshal")
