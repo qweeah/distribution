@@ -8,11 +8,11 @@ This document serves as a high level discussion of the implementation of the ext
 
 ## Extension Interface
 
-The `Extension` interface is introduced in the `distribution` package. It defines methods to access the extension's namespace-specific attributes such as the Name, Url defining the extension namespace, and the Description of the namespace. It defines route enumeration at the Registry and Repository level. It also encases the `ExtendedStorage` interface which defines the methods requires to extend the underlying storage functionality of the registry. 
+The `Extension` interface is introduced in the new `extension` package. It defines methods to access the extension's namespace-specific attributes such as the Name, Url defining the extension namespace, and the Description of the namespace. It defines route enumeration at the Registry and Repository level. It also encases the `ExtendedStorage` interface which defines the methods requires to extend the underlying storage functionality of the registry. 
 
 ```
 type Extension interface {
-	ExtendedStorage
+	storage.ExtendedStorage
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level
 	GetRepositoryRoutes() []ExtensionRoute
 	// GetRegistryRoutes returns a list of extension routes scoped at a registry level
@@ -26,39 +26,8 @@ type Extension interface {
 }
 ```
 
-The `Namespace` interface in the `distribution` package is modified to return a list of `Extensions` registered to the `Namespace`
-
-```
-type Namespace interface {
-	// Scope describes the names that can be used with this Namespace. The
-	// global namespace will have a scope that matches all names. The scope
-	// effectively provides an identity for the namespace.
-	Scope() Scope
-
-	// Repository should return a reference to the named repository. The
-	// registry may or may not have the repository but should always return a
-	// reference.
-	Repository(ctx context.Context, name reference.Named) (Repository, error)
-
-	// Repositories fills 'repos' with a lexicographically sorted catalog of repositories
-	// up to the size of 'repos' and returns the value 'n' for the number of entries
-	// which were filled.  'last' contains an offset in the catalog, and 'err' will be
-	// set to io.EOF if there are no more entries to obtain.
-	Repositories(ctx context.Context, repos []string, last string) (n int, err error)
-
-	// Blobs returns a blob enumerator to access all blobs
-	Blobs() BlobEnumerator
-
-	// BlobStatter returns a BlobStatter to control
-	BlobStatter() BlobStatter
-
-    // Extensions returns a list of Extension registered to the Namespace
-	Extensions() []Extension
-}
-```
-
 The `ExtendedStorage` interface defines methods that specify storage-specific handlers. Each extension will implement a handler extending the functionality. The interface can be expanded in the future to consider new handler types.
-`GetManifestHandlers` is used to return new `ManifestHandlers` defined by each of the extensions. (Note: To support this interface in the `distribution` package, the `ManifestHandlers` interface has been moved to the `distribution` package)
+`GetManifestHandlers` is used to return new `ManifestHandlers` defined by each of the extensions.
 `GetGarbageCollectionHandlers` is used to return `GCExtensionHandler` implemented by each extension.
 
 ```
@@ -67,27 +36,30 @@ type ExtendedStorage interface {
 	GetManifestHandlers(
 		repo Repository,
 		blobStore BlobStore) []ManifestHandler
-    // GetGarbageCollectHandler returns the GCExtensionHandler that handles custom garbage collection behavior for the extension.
-	GetGarbageCollectionHandler() GCExtensionHandler
+    // GetGarbageCollectHandlers returns the GCExtensionHandlers that handles custom garbage collection behavior for the extension.
+	GetGarbageCollectionHandlers() []GCExtensionHandler
 }
 ```
 
-The `GCExtensionHandler` interface defines three methods that are used in the garbage colection mark and sweep process. The `Mark` method is invoked for each `GCExtensionHandler` after the existing mark process finishes in `MarkAndSweep`. `IsEligibleForDeletion` is used to define if a specific manifest set for deletion in `MarkAndSweep` should be eligible for deletion. Extensions may choose to special case certain manifest types in manifest deletion. `RemoveManifestVacuum` is invoked to extend the `RemoveManifest` functionality for the `Vacuum`. New or special-cased manifests may require custom manifest deletion which can be defined with this method.
+The `GCExtensionHandler` interface defines three methods that are used in the garbage colection mark and sweep process. The `Mark` method is invoked for each `GCExtensionHandler` after the existing mark process finishes in `MarkAndSweep`. It is used to determine if the manifest and blobs should have their temporary ref count incremented in the case of an artifact manifest, or if the manifest and it's referrers should be recursively indexed for deletion in the case of a non-artifact manifest. `RemoveManifest` is invoked to extend the `RemoveManifest` functionality for the `Vacuum`. New or special-cased manifests may require custom manifest deletion which can be defined with this method. `SweepBlobs` is used to add artifact manifest/blobs to the original `markSet`. These blobs are retained after determining their ref count is still positive. 
 
 ```
 type GCExtensionHandler interface {
 	Mark(ctx context.Context,
+		repository distribution.Repository,
 		storageDriver driver.StorageDriver,
-		registry Namespace,
+		registry distribution.Namespace,
+		manifest distribution.Manifest,
+		manifestDigest digest.Digest,
 		dryRun bool,
-		removeUntagged bool) (map[digest.Digest]struct{}, error)
-	RemoveManifestVacuum(ctx context.Context,
+		removeUntagged bool) (bool, error)
+	RemoveManifest(ctx context.Context,
 		storageDriver driver.StorageDriver,
+		registry distribution.Namespace,
 		dgst digest.Digest,
 		repositoryName string) error
-	IsEligibleForDeletion(ctx context.Context,
-		dgst digest.Digest,
-		manifestService ManifestService) (bool, error)
+	SweepBlobs(ctx context.Context,
+		markSet map[digest.Digest]struct{}) map[digest.Digest]struct{}
 }
 ```
 

@@ -107,7 +107,7 @@ func (gc *orasGCHandler) RemoveManifest(ctx context.Context, storageDriver drive
 			// extract the reference
 			blobs := artifactManifest.References()
 
-			// decrement refcount for the blobs digests' and the manifest digest
+			// decrement refcount for the blobs' digests and the manifest digest
 			gc.artifactMarkSet[artifactDigest] -= 1
 			fmt.Printf("%s: decrementing artifact manifest ref count %s\n", repositoryName, dgst)
 			for _, descriptor := range blobs {
