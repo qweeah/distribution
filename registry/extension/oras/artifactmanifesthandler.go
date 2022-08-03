@@ -121,11 +121,13 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 
 		// Validate subject manifest.
 		subject := dm.Subject()
-		exists, err := ms.Exists(ctx, subject.Digest)
-		if !exists || err == distribution.ErrBlobUnknown {
-			errs = append(errs, distribution.ErrManifestBlobUnknown{Digest: subject.Digest})
-		} else if err != nil {
-			errs = append(errs, err)
+		if subject != nil {
+			exists, err := ms.Exists(ctx, subject.Digest)
+			if !exists || err == distribution.ErrBlobUnknown {
+				errs = append(errs, distribution.ErrManifestBlobUnknown{Digest: subject.Digest})
+			} else if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 
@@ -138,6 +140,10 @@ func (amh *artifactManifestHandler) verifyManifest(ctx context.Context, dm Deser
 
 // indexReferrers indexes the subject of the given revision in its referrers index store.
 func (amh *artifactManifestHandler) indexReferrers(ctx context.Context, dm DeserializedManifest, revision digest.Digest) error {
+	if dm.Subject() == nil {
+		return nil
+	}
+
 	// [TODO] We can use artifact type in the link path to support filtering by artifact type
 	//  but need to consider the max path length in different os
 	//artifactType := dm.ArtifactType()

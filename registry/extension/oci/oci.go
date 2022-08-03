@@ -19,7 +19,7 @@ const (
 	extensionName         = "ext"
 	discoverComponentName = "discover"
 	namespaceUrl          = "https://github.com/opencontainers/distribution-spec/blob/main/extensions/_oci.md"
-	namespaceDescription  = "oci extension enables listing of supported registry and repository extensions"
+	namespaceDescription  = "oci extension enables listing of supported registry and repository extensions."
 )
 
 type ociNamespace struct {
@@ -84,11 +84,12 @@ func (o *ociNamespace) GetRepositoryRoutes() []extension.ExtensionRoute {
 			Extension: extensionName,
 			Component: discoverComponentName,
 			Descriptor: v2.RouteDescriptor{
-				Entity: "Extension",
+				Entity:      "Extension",
+				Description: "discovers extensions enabled at the repository level",
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get all extensions enabled for a repository.",
+						Description: "get all extensions enabled for a repository.",
 					},
 				},
 			},
@@ -109,11 +110,12 @@ func (o *ociNamespace) GetRegistryRoutes() []extension.ExtensionRoute {
 			Extension: extensionName,
 			Component: discoverComponentName,
 			Descriptor: v2.RouteDescriptor{
-				Entity: "Extension",
+				Entity:      "Extension",
+				Description: "discovers extensions enabled at the registry level",
 				Methods: []v2.MethodDescriptor{
 					{
 						Method:      "GET",
-						Description: "Get all extensions enabled for a registry.",
+						Description: "get all extensions enabled for a registry.",
 					},
 				},
 			},

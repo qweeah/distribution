@@ -78,7 +78,7 @@ var extensionsNamespaces map[string]Extension
 func EnumerateRegistered(ctx ExtensionContext) (enumeratedExtensions []EnumerateExtension) {
 	for _, namespace := range extensionsNamespaces {
 		enumerateExtension := EnumerateExtension{
-			Name:        namespace.GetNamespaceName(),
+			Name:        fmt.Sprintf("_%s", namespace.GetNamespaceName()),
 			Url:         namespace.GetNamespaceUrl(),
 			Description: namespace.GetNamespaceDescription(),
 			Endpoints:   []string{},
@@ -94,6 +94,7 @@ func EnumerateRegistered(ctx ExtensionContext) (enumeratedExtensions []Enumerate
 		for _, route := range scopedRoutes {
 			path := fmt.Sprintf("_%s/%s/%s", route.Namespace, route.Extension, route.Component)
 			enumerateExtension.Endpoints = append(enumerateExtension.Endpoints, path)
+			enumerateExtension.Description = fmt.Sprintf("%s %s %s.", enumerateExtension.Description, path, route.Descriptor.Description)
 		}
 
 		// add extension to list if endpoints exist
