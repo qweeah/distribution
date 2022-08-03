@@ -49,13 +49,14 @@ type GCExtensionHandler interface {
 		manifest Manifest,
 		manifestDigest digest.Digest,
 		dryRun bool,
-		removeUntagged bool) (map[digest.Digest]struct{}, bool, error)
-	RemoveManifestVacuum(ctx context.Context,
+		removeUntagged bool) (bool, error)
+	RemoveManifest(ctx context.Context,
 		storageDriver driver.StorageDriver,
 		registry Namespace,
 		dgst digest.Digest,
-		markSet map[digest.Digest]struct{},
-		repositoryName string) (map[digest.Digest]struct{}, error)
+		repositoryName string) error
+	SweepBlobs(ctx context.Context,
+		markSet map[digest.Digest]struct{}) map[digest.Digest]struct{}
 }
 
 // ExtendedStorage defines extensions to store operations like manifest for example.
@@ -71,6 +72,7 @@ type ExtendedStorage interface {
 // Extension is the interface that is used to define extensions to the distribution.
 type Extension interface {
 	ExtendedStorage
+	// ExtensionService
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level
 	GetRepositoryRoutes() []ExtensionRoute
 	// GetRegistryRoutes returns a list of extension routes scoped at a registry level
@@ -81,6 +83,9 @@ type Extension interface {
 	GetNamespaceUrl() string
 	// GetNamespaceDescription returns the description associated with the namespace
 	GetNamespaceDescription() string
+}
+
+type ExtensionService interface {
 }
 
 // InitExtension is the initialize function for creating the extension namespace

@@ -74,6 +74,7 @@ type Describable interface {
 	Descriptor() Descriptor
 }
 
+// TODO: This interface should not live here in the future
 // A ManifestHandler gets and puts manifests of a particular type.
 type ManifestHandler interface {
 	// Unmarshal unmarshals the manifest from a byte slice.

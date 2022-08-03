@@ -53,7 +53,10 @@ func newOrasNamespace(ctx context.Context, storageDriver driver.StorageDriver, o
 		}
 	}
 
-	orasGCHandler := orasGCHandler{artifactManifestIndex: make(map[digest.Digest][]digest.Digest)}
+	orasGCHandler := orasGCHandler{
+		artifactManifestIndex: make(map[digest.Digest][]digest.Digest),
+		artifactMarkSet:       make(map[digest.Digest]int),
+	}
 
 	return &orasNamespace{
 		referrersEnabled: referrersEnabled,
