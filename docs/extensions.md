@@ -41,7 +41,7 @@ type ExtendedStorage interface {
 }
 ```
 
-The `GCExtensionHandler` interface defines three methods that are used in the garbage colection mark and sweep process. The `Mark` method is invoked for each `GCExtensionHandler` after the existing mark process finishes in `MarkAndSweep`. It is used to determine if the manifest and blobs should have their temporary ref count incremented in the case of an artifact manifest, or if the manifest and it's referrers should be recursively indexed for deletion in the case of a non-artifact manifest. `RemoveManifest` is invoked to extend the `RemoveManifest` functionality for the `Vacuum`. New or special-cased manifests may require custom manifest deletion which can be defined with this method. `SweepBlobs` is used to add artifact manifest/blobs to the original `markSet`. These blobs are retained after determining their ref count is still positive. 
+The `GCExtensionHandler` interface defines three methods that are used in the garbage colection mark and sweep process. The `Mark` method is invoked for each `GCExtensionHandler` after the existing mark process finishes in `MarkAndSweep`. It is used to determine if the manifest and blobs should have their temporary ref count incremented in the case of an artifact manifest, or if the manifest and it's referrers should be recursively indexed for deletion in the case of a non-artifact manifest. `OnManifestDelete` is invoked to extend the `RemoveManifest` functionality for the `Vacuum`. New or special-cased manifests may require custom manifest deletion which can be defined with this method. `SweepBlobs` is used to add artifact manifest/blobs to the original `markSet`. These blobs are retained after determining their ref count is still positive. 
 
 ```
 type GCExtensionHandler interface {
@@ -53,7 +53,7 @@ type GCExtensionHandler interface {
 		manifestDigest digest.Digest,
 		dryRun bool,
 		removeUntagged bool) (bool, error)
-	RemoveManifest(ctx context.Context,
+	OnManifestDelete(ctx context.Context,
 		storageDriver driver.StorageDriver,
 		registry distribution.Namespace,
 		dgst digest.Digest,
