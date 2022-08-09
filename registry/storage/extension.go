@@ -25,7 +25,7 @@ type GCExtensionHandler interface {
 		manifestDigest digest.Digest,
 		dryRun bool,
 		removeUntagged bool) (bool, error)
-	RemoveManifest(ctx context.Context,
+	OnManifestDelete(ctx context.Context,
 		storageDriver driver.StorageDriver,
 		registry distribution.Namespace,
 		dgst digest.Digest,

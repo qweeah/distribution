@@ -26,7 +26,6 @@ func (gc *orasGCHandler) Mark(ctx context.Context,
 	dgst digest.Digest,
 	dryRun bool,
 	removeUntagged bool) (bool, error) {
-	//markSet := make(map[digest.Digest]struct{})
 	blobStatter := registry.BlobStatter()
 	mediaType, _, err := manifest.Payload()
 	if err != nil {
@@ -48,6 +47,9 @@ func (gc *orasGCHandler) Mark(ctx context.Context,
 		}
 		return false, nil
 	} else {
+		// TODO: Add support for untagged root artifact manifest (no subject specified)
+		// Subsequently, extend GC support for sweeping all referrers to untagged root artifact manifest
+
 		// if the manifest passed isn't an an artifact -> call the sweep ingestor
 		// find all artifacts linked to manifest and add to artifactManifestIndex for subsequent deletion
 		gc.artifactManifestIndex[dgst] = make([]digest.Digest, 0)
@@ -71,7 +73,7 @@ func (gc *orasGCHandler) Mark(ctx context.Context,
 	}
 }
 
-func (gc *orasGCHandler) RemoveManifest(ctx context.Context, storageDriver driver.StorageDriver, registry distribution.Namespace, dgst digest.Digest, repositoryName string) error {
+func (gc *orasGCHandler) OnManifestDelete(ctx context.Context, storageDriver driver.StorageDriver, registry distribution.Namespace, dgst digest.Digest, repositoryName string) error {
 	referrerRootPath := referrersLinkPath(repositoryName)
 	fullArtifactManifestPath := path.Join(referrerRootPath, dgst.Algorithm().String(), dgst.Hex())
 	dcontext.GetLogger(ctx).Infof("deleting manifest ref folder: %s", fullArtifactManifestPath)

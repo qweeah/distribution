@@ -138,7 +138,7 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 				return fmt.Errorf("failed to delete manifest %s: %v", obj.Digest, err)
 			}
 			for _, gcHandler := range opts.GCExtensionHandlers {
-				err := gcHandler.RemoveManifest(ctx, storageDriver, registry, obj.Digest, obj.Name)
+				err := gcHandler.OnManifestDelete(ctx, storageDriver, registry, obj.Digest, obj.Name)
 				if err != nil {
 					return fmt.Errorf("failed to call remove manifest extension handler: %v", err)
 				}

@@ -58,9 +58,6 @@ type Extension interface {
 	GetNamespaceDescription() string
 }
 
-type ExtensionService interface {
-}
-
 // InitExtension is the initialize function for creating the extension namespace
 type InitExtension func(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Extension, error)
 
