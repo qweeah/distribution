@@ -21,7 +21,7 @@ type ArtifactService interface {
 
 // referrersHandler handles http operations on manifest referrers.
 type referrersHandler struct {
-	extContext    *extension.Context
+	extContext    *extension.ExtensionContext
 	storageDriver driver.StorageDriver
 
 	// Digest is the target manifest's digest.
@@ -51,49 +51,62 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 
 	blobStatter := h.extContext.Registry.BlobStatter()
 	rootPath := path.Join(referrersLinkPath(repo.Named().Name()), revision.Algorithm().String(), revision.Hex())
-	err = h.enumerateReferrerLinks(ctx, rootPath, func(referrerRevision digest.Digest) error {
-		man, err := manifests.Get(ctx, referrerRevision)
-		if err != nil {
-			return err
-		}
-
-		ArtifactMan, ok := man.(*DeserializedManifest)
-		if !ok {
-			// The PUT handler would guard against this situation. Skip this manifest.
-			return nil
-		}
-
-		extractedArtifactType := ArtifactMan.ArtifactType()
-
-		// filtering by artifact type or bypass if no artifact type specified
-		if artifactType == "" || extractedArtifactType == artifactType {
-			desc, err := blobStatter.Stat(ctx, referrerRevision)
+	err = enumerateReferrerLinks(ctx,
+		rootPath,
+		h.storageDriver,
+		repo,
+		blobStatter,
+		revision,
+		map[digest.Digest][]digest.Digest{},
+		func(ctx context.Context,
+			referrerRevision digest.Digest,
+			subjectRevision digest.Digest,
+			artifactManifestIndex map[digest.Digest][]digest.Digest,
+			repository distribution.Repository,
+			blobstatter distribution.BlobStatter,
+			storageDriver driver.StorageDriver) error {
+			man, err := manifests.Get(ctx, referrerRevision)
 			if err != nil {
 				return err
 			}
-			desc.MediaType, _, _ = man.Payload()
-			artifactDesc := artifactv1.Descriptor{
-				MediaType:    desc.MediaType,
-				Size:         desc.Size,
-				Digest:       desc.Digest,
-				ArtifactType: extractedArtifactType,
+
+			artifactManifest, ok := man.(*DeserializedManifest)
+			if !ok {
+				// The PUT handler would guard against this situation. Skip this manifest.
+				return nil
 			}
 
-			if annotation, ok := ArtifactMan.Annotations()[createAnnotationName]; !ok {
-				referrersUnsorted = append(referrersUnsorted, artifactDesc)
-			} else {
-				extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+			extractedArtifactType := artifactManifest.ArtifactType()
+
+			// filtering by artifact type or bypass if no artifact type specified
+			if artifactType == "" || extractedArtifactType == artifactType {
+				desc, err := blobStatter.Stat(ctx, referrerRevision)
 				if err != nil {
-					return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
+					return err
 				}
-				referrersWrappers = append(referrersWrappers, referrersSortedWrapper{
-					createdAt:  extractedTimestamp,
-					descriptor: artifactDesc,
-				})
+				desc.MediaType, _, _ = man.Payload()
+				artifactDesc := artifactv1.Descriptor{
+					MediaType:    desc.MediaType,
+					Size:         desc.Size,
+					Digest:       desc.Digest,
+					ArtifactType: extractedArtifactType,
+				}
+
+				if annotation, ok := artifactManifest.Annotations()[createAnnotationName]; !ok {
+					referrersUnsorted = append(referrersUnsorted, artifactDesc)
+				} else {
+					extractedTimestamp, err := time.Parse(createAnnotationTimestampFormat, annotation)
+					if err != nil {
+						return fmt.Errorf("failed to parse created annotation timestamp: %v", err)
+					}
+					referrersWrappers = append(referrersWrappers, referrersSortedWrapper{
+						createdAt:  extractedTimestamp,
+						descriptor: artifactDesc,
+					})
+				}
 			}
-		}
-		return nil
-	})
+			return nil
+		})
 
 	if err != nil {
 		switch err.(type) {
@@ -116,10 +129,23 @@ func (h *referrersHandler) Referrers(ctx context.Context, revision digest.Digest
 	referrersSorted = append(referrersSorted, referrersUnsorted...)
 	return referrersSorted, nil
 }
-func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath string, ingestor func(digest.Digest) error) error {
-	blobStatter := h.extContext.Registry.BlobStatter()
 
-	return h.storageDriver.Walk(ctx, rootPath, func(fileInfo driver.FileInfo) error {
+func enumerateReferrerLinks(ctx context.Context,
+	rootPath string,
+	stDriver driver.StorageDriver,
+	repository distribution.Repository,
+	blobstatter distribution.BlobStatter,
+	subjectRevision digest.Digest,
+	artifactManifestIndex map[digest.Digest][]digest.Digest,
+	ingestor func(ctx context.Context,
+		digest digest.Digest,
+		subjectRevision digest.Digest,
+		artifactManifestIndex map[digest.Digest][]digest.Digest,
+		repository distribution.Repository,
+		blobstatter distribution.BlobStatter,
+		storageDriver driver.StorageDriver) error) error {
+
+	return stDriver.Walk(ctx, rootPath, func(fileInfo driver.FileInfo) error {
 		// exit early if directory...
 		if fileInfo.IsDir() {
 			return nil
@@ -133,13 +159,13 @@ func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath 
 		}
 
 		// read the digest found in link
-		digest, err := h.readlink(ctx, filePath)
+		digest, err := readlink(ctx, filePath, stDriver)
 		if err != nil {
 			return err
 		}
 
 		// ensure this conforms to the linkPathFns
-		_, err = blobStatter.Stat(ctx, digest)
+		_, err = blobstatter.Stat(ctx, digest)
 		if err != nil {
 			// we expect this error to occur so we move on
 			if err == distribution.ErrBlobUnknown {
@@ -148,7 +174,13 @@ func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath 
 			return err
 		}
 
-		err = ingestor(digest)
+		err = ingestor(ctx,
+			digest,
+			subjectRevision,
+			artifactManifestIndex,
+			repository,
+			blobstatter,
+			stDriver)
 		if err != nil {
 			return err
 		}
@@ -157,8 +189,8 @@ func (h *referrersHandler) enumerateReferrerLinks(ctx context.Context, rootPath 
 	})
 }
 
-func (h *referrersHandler) readlink(ctx context.Context, path string) (digest.Digest, error) {
-	content, err := h.storageDriver.GetContent(ctx, path)
+func readlink(ctx context.Context, path string, stDriver driver.StorageDriver) (digest.Digest, error) {
+	content, err := stDriver.GetContent(ctx, path)
 	if err != nil {
 		return "", err
 	}

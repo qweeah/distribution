@@ -51,6 +51,7 @@ func (v Vacuum) RemoveBlob(dgst string) error {
 }
 
 // RemoveManifest removes a manifest from the filesystem
+// Invokes each GCExtensionHandler's RemoveManifestVacuum
 func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) error {
 	// remove a tag manifest reference, in case of not found continue to next one
 	for _, tag := range tags {
@@ -81,7 +82,14 @@ func (v Vacuum) RemoveManifest(name string, dgst digest.Digest, tags []string) e
 		return err
 	}
 	dcontext.GetLogger(v.ctx).Infof("deleting manifest: %s", manifestPath)
-	return v.driver.Delete(v.ctx, manifestPath)
+	err = v.driver.Delete(v.ctx, manifestPath)
+	if err != nil {
+		if _, ok := err.(driver.PathNotFoundError); !ok {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // RemoveRepository removes a repository directory from the

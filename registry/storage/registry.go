@@ -25,7 +25,7 @@ type registry struct {
 	blobDescriptorServiceFactory distribution.BlobDescriptorServiceFactory
 	manifestURLs                 manifestURLs
 	driver                       storagedriver.StorageDriver
-	extendedStorages             []ExtendedStorage
+	extendedNamespaces           []ExtendedStorage
 }
 
 // manifestURLs holds regular expressions for controlling manifest URL whitelisting
@@ -37,11 +37,11 @@ type manifestURLs struct {
 // RegistryOption is the type used for functional options for NewRegistry.
 type RegistryOption func(*registry) error
 
-// AddExtendedStorage is a functional option for NewRegistry. It adds the given
-// extended storage to the list of extended storages in the registry.
-func AddExtendedStorage(extendedStorage ExtendedStorage) RegistryOption {
+// AddExtendedNamespace is a functional option for NewRegistry. It adds the given
+// extended namespace to the list of extended namespaces in the registry.
+func AddExtendedNamespace(extendedNamespace ExtendedStorage) RegistryOption {
 	return func(registry *registry) error {
-		registry.extendedStorages = append(registry.extendedStorages, extendedStorage)
+		registry.extendedNamespaces = append(registry.extendedNamespaces, extendedNamespace)
 		return nil
 	}
 }
@@ -277,7 +277,7 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 	}
 
 	var extensionManifestHandlers []ManifestHandler
-	for _, ext := range repo.registry.extendedStorages {
+	for _, ext := range repo.registry.extendedNamespaces {
 		handlers := ext.GetManifestHandlers(repo, blobStore)
 		if len(handlers) > 0 {
 			extensionManifestHandlers = append(extensionManifestHandlers, handlers...)

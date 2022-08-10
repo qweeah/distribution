@@ -20,7 +20,7 @@ type tagHistoryAPIResponse struct {
 
 // manifestHandler handles requests for manifests under a manifest name.
 type tagHistoryHandler struct {
-	*extension.Context
+	*extension.ExtensionContext
 	storageDriver driver.StorageDriver
 }
 

@@ -34,7 +34,7 @@ type distributionOptions struct {
 }
 
 // newDistNamespace creates a new extension namespace with the name "distribution"
-func newDistNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (extension.Namespace, error) {
+func newDistNamespace(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (extension.Extension, error) {
 
 	optionsYaml, err := yaml.Marshal(options)
 	if err != nil {
@@ -67,7 +67,7 @@ func newDistNamespace(ctx context.Context, storageDriver driver.StorageDriver, o
 
 func init() {
 	// register the extension namespace.
-	extension.Register(namespaceName, newDistNamespace)
+	extension.RegisterExtension(namespaceName, newDistNamespace)
 }
 
 // GetManifestHandlers returns a list of manifest handlers that will be registered in the manifest store.
@@ -76,12 +76,17 @@ func (o *distributionNamespace) GetManifestHandlers(repo distribution.Repository
 	return []storage.ManifestHandler{}
 }
 
+func (o *distributionNamespace) GetGarbageCollectionHandlers() []storage.GCExtensionHandler {
+	// This extension doesn't extend any garbage collection operations.
+	return []storage.GCExtensionHandler{}
+}
+
 // GetRepositoryRoutes returns a list of extension routes scoped at a repository level
-func (d *distributionNamespace) GetRepositoryRoutes() []extension.Route {
-	var routes []extension.Route
+func (d *distributionNamespace) GetRepositoryRoutes() []extension.ExtensionRoute {
+	var routes []extension.ExtensionRoute
 
 	if d.manifestsEnabled {
-		routes = append(routes, extension.Route{
+		routes = append(routes, extension.ExtensionRoute{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: manifestsComponentName,
@@ -100,7 +105,7 @@ func (d *distributionNamespace) GetRepositoryRoutes() []extension.Route {
 	}
 
 	if d.tagHistoryEnabled {
-		routes = append(routes, extension.Route{
+		routes = append(routes, extension.ExtensionRoute{
 			Namespace: namespaceName,
 			Extension: extensionName,
 			Component: tagHistoryComponentName,
@@ -134,7 +139,7 @@ func (d *distributionNamespace) GetRepositoryRoutes() []extension.Route {
 
 // GetRegistryRoutes returns a list of extension routes scoped at a registry level
 // There are no registry scoped routes exposed by this namespace
-func (d *distributionNamespace) GetRegistryRoutes() []extension.Route {
+func (d *distributionNamespace) GetRegistryRoutes() []extension.ExtensionRoute {
 	return nil
 }
 
@@ -153,10 +158,10 @@ func (d *distributionNamespace) GetNamespaceDescription() string {
 	return namespaceDescription
 }
 
-func (d *distributionNamespace) tagHistoryDispatcher(ctx *extension.Context, r *http.Request) http.Handler {
+func (d *distributionNamespace) tagHistoryDispatcher(ctx *extension.ExtensionContext, r *http.Request) http.Handler {
 	tagHistoryHandler := &tagHistoryHandler{
-		Context:       ctx,
-		storageDriver: d.storageDriver,
+		ExtensionContext: ctx,
+		storageDriver:    d.storageDriver,
 	}
 
 	return handlers.MethodHandler{
@@ -164,10 +169,10 @@ func (d *distributionNamespace) tagHistoryDispatcher(ctx *extension.Context, r *
 	}
 }
 
-func (d *distributionNamespace) manifestsDispatcher(ctx *extension.Context, r *http.Request) http.Handler {
+func (d *distributionNamespace) manifestsDispatcher(ctx *extension.ExtensionContext, r *http.Request) http.Handler {
 	manifestsHandler := &manifestHandler{
-		Context:       ctx,
-		storageDriver: d.storageDriver,
+		ExtensionContext: ctx,
+		storageDriver:    d.storageDriver,
 	}
 
 	return handlers.MethodHandler{

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/distribution/distribution/v3"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 )
@@ -15,12 +16,32 @@ type ReadOnlyBlobStore interface {
 	distribution.BlobProvider
 }
 
+type GCExtensionHandler interface {
+	Mark(ctx context.Context,
+		repository distribution.Repository,
+		storageDriver driver.StorageDriver,
+		registry distribution.Namespace,
+		manifest distribution.Manifest,
+		manifestDigest digest.Digest,
+		dryRun bool,
+		removeUntagged bool) (bool, error)
+	OnManifestDelete(ctx context.Context,
+		storageDriver driver.StorageDriver,
+		registry distribution.Namespace,
+		dgst digest.Digest,
+		repositoryName string) error
+	SweepBlobs(ctx context.Context,
+		markSet map[digest.Digest]struct{}) map[digest.Digest]struct{}
+}
+
 // ExtendedStorage defines extensions to store operations like manifest for example.
 type ExtendedStorage interface {
 	// GetManifestHandlers returns the list of manifest handlers that handle custom manifest formats supported by the extensions.
 	GetManifestHandlers(
 		repo distribution.Repository,
 		blobStore distribution.BlobStore) []ManifestHandler
+	// GetGarbageCollectHandlers returns the list of GC handlers that handle custom garbage collection behavior for the extensions
+	GetGarbageCollectionHandlers() []GCExtensionHandler
 }
 
 // GetManifestLinkReadOnlyBlobStore will enable extensions to access the underlying linked blob store for readonly operations.

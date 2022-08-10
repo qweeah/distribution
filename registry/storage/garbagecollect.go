@@ -16,8 +16,9 @@ func emit(format string, a ...interface{}) {
 
 // GCOpts contains options for garbage collector
 type GCOpts struct {
-	DryRun         bool
-	RemoveUntagged bool
+	DryRun              bool
+	RemoveUntagged      bool
+	GCExtensionHandlers []GCExtensionHandler
 }
 
 // ManifestDel contains manifest structure which will be deleted
@@ -68,7 +69,6 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 					return fmt.Errorf("failed to retrieve tags for digest %v: %v", dgst, err)
 				}
 				if len(tags) == 0 {
-					emit("manifest eligible for deletion: %s", dgst)
 					// fetch all tags from repository
 					// all of these tags could contain manifest in history
 					// which means that we need check (and delete) those references when deleting manifest
@@ -76,7 +76,22 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 					if err != nil {
 						return fmt.Errorf("failed to retrieve tags %v", err)
 					}
+					// call GC extension handlers' mark
+					manifest, err := manifestService.Get(ctx, dgst)
+					if err != nil {
+						return fmt.Errorf("failed to retrieve manifest: %v", err)
+					}
+					for _, gcHandler := range opts.GCExtensionHandlers {
+						deleteEligible, err := gcHandler.Mark(ctx, repository, storageDriver, registry, manifest, dgst, opts.DryRun, opts.RemoveUntagged)
+						if err != nil {
+							return fmt.Errorf("failed to mark using extension handler: %v", err)
+						}
+						if !deleteEligible {
+							return nil
+						}
+					}
 					manifestArr = append(manifestArr, ManifestDel{Name: repoName, Digest: dgst, Tags: allTags})
+					emit("manifest eligible for deletion: %s", dgst)
 					return nil
 				}
 			}
@@ -122,7 +137,17 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 			if err != nil {
 				return fmt.Errorf("failed to delete manifest %s: %v", obj.Digest, err)
 			}
+			for _, gcHandler := range opts.GCExtensionHandlers {
+				err := gcHandler.OnManifestDelete(ctx, storageDriver, registry, obj.Digest, obj.Name)
+				if err != nil {
+					return fmt.Errorf("failed to call remove manifest extension handler: %v", err)
+				}
+			}
 		}
+	}
+	// GC extension will add final saved blobs into markset for retention
+	for _, gcHandler := range opts.GCExtensionHandlers {
+		markSet = gcHandler.SweepBlobs(ctx, markSet)
 	}
 	blobService := registry.Blobs()
 	deleteSet := make(map[digest.Digest]struct{})
@@ -147,6 +172,5 @@ func MarkAndSweep(ctx context.Context, storageDriver driver.StorageDriver, regis
 			return fmt.Errorf("failed to delete blob %s: %v", dgst, err)
 		}
 	}
-
 	return err
 }

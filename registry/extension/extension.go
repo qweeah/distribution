@@ -1,7 +1,7 @@
 package extension
 
 import (
-	c "context"
+	"context"
 	"fmt"
 	"net/http"
 
@@ -13,9 +13,9 @@ import (
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 )
 
-// Context contains the request specific context for use in across handlers.
-type Context struct {
-	c.Context
+// ExtensionContext contains the request specific context for use in across handlers.
+type ExtensionContext struct {
+	context.Context
 
 	// Registry is the base namespace that is used by all extension namespaces
 	Registry distribution.Namespace
@@ -26,10 +26,10 @@ type Context struct {
 }
 
 // RouteDispatchFunc is the http route dispatcher used by the extension route handlers
-type RouteDispatchFunc func(extContext *Context, r *http.Request) http.Handler
+type RouteDispatchFunc func(extContext *ExtensionContext, r *http.Request) http.Handler
 
-// Route describes an extension route.
-type Route struct {
+// ExtensionRoute describes an extension route.
+type ExtensionRoute struct {
 	// Namespace is the name of the extension namespace
 	Namespace string
 	// Extension is the name of the extension under the namespace
@@ -42,13 +42,14 @@ type Route struct {
 	Dispatcher RouteDispatchFunc
 }
 
-// Namespace is the namespace that is used to define extensions to the distribution.
-type Namespace interface {
+// Extension is the interface that is used to define extensions to the distribution.
+type Extension interface {
 	storage.ExtendedStorage
+	// ExtensionService
 	// GetRepositoryRoutes returns a list of extension routes scoped at a repository level
-	GetRepositoryRoutes() []Route
+	GetRepositoryRoutes() []ExtensionRoute
 	// GetRegistryRoutes returns a list of extension routes scoped at a registry level
-	GetRegistryRoutes() []Route
+	GetRegistryRoutes() []ExtensionRoute
 	// GetNamespaceName returns the name associated with the namespace
 	GetNamespaceName() string
 	// GetNamespaceUrl returns the url link to the documentation where the namespace's extension and endpoints are defined
@@ -57,8 +58,8 @@ type Namespace interface {
 	GetNamespaceDescription() string
 }
 
-// InitExtensionNamespace is the initialize function for creating the extension namespace
-type InitExtensionNamespace func(ctx c.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Namespace, error)
+// InitExtension is the initialize function for creating the extension namespace
+type InitExtension func(ctx context.Context, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Extension, error)
 
 // EnumerateExtension specifies extension information at the namespace level
 type EnumerateExtension struct {
@@ -68,10 +69,10 @@ type EnumerateExtension struct {
 	Endpoints   []string `json:"endpoints"`
 }
 
-var extensions map[string]InitExtensionNamespace
-var extensionsNamespaces map[string]Namespace
+var extensions map[string]InitExtension
+var extensionsNamespaces map[string]Extension
 
-func EnumerateRegistered(ctx Context) (enumeratedExtensions []EnumerateExtension) {
+func EnumerateRegistered(ctx ExtensionContext) (enumeratedExtensions []EnumerateExtension) {
 	for _, namespace := range extensionsNamespaces {
 		enumerateExtension := EnumerateExtension{
 			Name:        fmt.Sprintf("_%s", namespace.GetNamespaceName()),
@@ -102,11 +103,11 @@ func EnumerateRegistered(ctx Context) (enumeratedExtensions []EnumerateExtension
 	return enumeratedExtensions
 }
 
-// Register is used to register an InitExtensionNamespace for
-// an extension namespace with the given name.
-func Register(name string, initFunc InitExtensionNamespace) {
+// RegisterExtension is used to register an InitExtension for
+// an extension with the given name.
+func RegisterExtension(name string, initFunc InitExtension) {
 	if extensions == nil {
-		extensions = make(map[string]InitExtensionNamespace)
+		extensions = make(map[string]InitExtension)
 	}
 
 	if _, exists := extensions[name]; exists {
@@ -116,11 +117,11 @@ func Register(name string, initFunc InitExtensionNamespace) {
 	extensions[name] = initFunc
 }
 
-// Get constructs an extension namespace with the given options using the given name.
-func Get(ctx c.Context, name string, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Namespace, error) {
+// GetExtension constructs an extension with the given options using the given name.
+func GetExtension(ctx context.Context, name string, storageDriver driver.StorageDriver, options configuration.ExtensionConfig) (Extension, error) {
 	if extensions != nil {
 		if extensionsNamespaces == nil {
-			extensionsNamespaces = make(map[string]Namespace)
+			extensionsNamespaces = make(map[string]Extension)
 		}
 
 		if initFunc, exists := extensions[name]; exists {

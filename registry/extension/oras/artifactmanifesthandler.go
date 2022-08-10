@@ -20,6 +20,8 @@ var (
 	errInvalidCreatedAnnotation = errors.New("failed to parse created time")
 )
 
+const rootPath = "/docker/registry/v2"
+
 // artifactManifestHandler is a ManifestHandler that covers ORAS Artifacts.
 type artifactManifestHandler struct {
 	repository    distribution.Repository
@@ -156,6 +158,18 @@ func (amh *artifactManifestHandler) indexReferrers(ctx context.Context, dm Deser
 	return nil
 }
 
+// TODO: Should be removed and paths package used
+func referrersRepositoriesRootPath(name string) string {
+	return path.Join(rootPath, "repositories", name)
+}
+
+// TODO: Should be removed and paths package used
+func referrersRepositoriesManifestRevisionPath(name string, dgst digest.Digest) string {
+	return path.Join(referrersRepositoriesRootPath(name), "_manifests", "revisions", dgst.Algorithm().String(), dgst.Hex())
+}
+
+// TODO: Should be removed and defined instead in paths package
+// Requires paths package to be exported
 func referrersLinkPath(name string) string {
-	return path.Join("/docker/registry/", "v2", "repositories", name, "_refs", "subjects")
+	return path.Join(referrersRepositoriesRootPath(name), "_refs", "subjects")
 }

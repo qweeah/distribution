@@ -19,7 +19,7 @@ type manifestsGetAPIResponse struct {
 
 // manifestHandler handles requests for manifests under a manifest name.
 type manifestHandler struct {
-	*extension.Context
+	*extension.ExtensionContext
 	storageDriver driver.StorageDriver
 }
 

@@ -17,22 +17,22 @@ import (
 	orasartifacts "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
-func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storage.RegistryOption) distribution.Namespace {
+func createRegistry(t *testing.T, driver driver.StorageDriver, options ...storage.RegistryOption) (distribution.Namespace, extension.Extension) {
 	ctx := context.Background()
 	options = append([]storage.RegistryOption{storage.EnableDelete}, options...)
 	extensionConfig := OrasOptions{
 		ArtifactsExtComponents: []string{"referrers"},
 	}
-	ns, err := extension.Get(ctx, "oras", driver, extensionConfig)
+	ns, err := extension.GetExtension(ctx, "oras", driver, extensionConfig)
 	if err != nil {
 		t.Fatalf("unable to configure extension namespace (%s): %s", "oras", err)
 	}
-	options = append(options, storage.AddExtendedStorage(ns))
+	options = append(options, storage.AddExtendedNamespace(ns))
 	registry, err := storage.NewRegistry(ctx, driver, options...)
 	if err != nil {
 		t.Fatalf("failed to construct namespace")
 	}
-	return registry
+	return registry, ns
 }
 
 func makeRepository(t *testing.T, registry distribution.Namespace, name string) distribution.Repository {
@@ -62,7 +62,7 @@ func makeManifestService(t *testing.T, repository distribution.Repository) distr
 func TestVerifyArtifactManifestPut(t *testing.T) {
 	ctx := context.Background()
 	inmemoryDriver := inmemory.New()
-	registry := createRegistry(t, inmemoryDriver)
+	registry, _ := createRegistry(t, inmemoryDriver)
 	repo := makeRepository(t, registry, "test")
 	manifestService := makeManifestService(t, repo)
 
