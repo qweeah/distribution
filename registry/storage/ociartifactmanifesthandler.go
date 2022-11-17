@@ -7,15 +7,17 @@ import (
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/manifest/ociartifact"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // ociArtifactManifestHandler is a ManifestHandler that covers oci artifact manifests.
 type ociArtifactManifestHandler struct {
-	repository distribution.Repository
-	blobStore  distribution.BlobStore
-	ctx        context.Context
+	repository    distribution.Repository
+	blobStore     distribution.BlobStore
+	ctx           context.Context
+	storageDriver driver.StorageDriver
 }
 
 var _ ManifestHandler = &ociArtifactManifestHandler{}
@@ -54,6 +56,11 @@ func (ms *ociArtifactManifestHandler) Put(ctx context.Context, manifest distribu
 		return "", err
 	}
 
+	err = ms.indexReferrers(ctx, m, revision.Digest)
+	if err != nil {
+		dcontext.GetLogger(ctx).Errorf("error indexing referrers: %v", err)
+		return "", err
+	}
 	return revision.Digest, nil
 }
 
@@ -111,4 +118,21 @@ func (ms *ociArtifactManifestHandler) verifyArtifactManifest(ctx context.Context
 	}
 
 	return nil
+}
+
+// indexReferrers indexes the subject of the given revision in its referrers index store.
+func (ms *ociArtifactManifestHandler) indexReferrers(ctx context.Context, dm *ociartifact.DeserializedManifest, revision digest.Digest) error {
+	if dm.Subject == nil {
+		return nil
+	}
+
+	// [TODO] We can use artifact type in the link path to support filtering by artifact type
+	//  but need to consider the max path length in different os
+	subjectRevision := dm.Subject.Digest
+
+	referrersLinkPath, err := pathFor(referrersLinkPathSpec{name: ms.repository.Named().Name(), revision: revision, subjectRevision: subjectRevision})
+	if err != nil {
+		return fmt.Errorf("failed to generate referrers link path for %v", revision)
+	}
+	return ms.storageDriver.PutContent(ctx, referrersLinkPath, []byte(revision.String()))
 }
