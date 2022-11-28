@@ -7,17 +7,21 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	dcontext "github.com/distribution/distribution/v3/context"
+	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
+	"github.com/distribution/distribution/v3/manifest/schema2"
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-//ocischemaManifestHandler is a ManifestHandler that covers ocischema manifests.
+// ocischemaManifestHandler is a ManifestHandler that covers ocischema manifests.
 type ocischemaManifestHandler struct {
-	repository   distribution.Repository
-	blobStore    distribution.BlobStore
-	ctx          context.Context
-	manifestURLs manifestURLs
+	repository    distribution.Repository
+	blobStore     distribution.BlobStore
+	ctx           context.Context
+	manifestURLs  manifestURLs
+	storageDriver driver.StorageDriver
 }
 
 var _ ManifestHandler = &ocischemaManifestHandler{}
@@ -53,6 +57,12 @@ func (ms *ocischemaManifestHandler) Put(ctx context.Context, manifest distributi
 	revision, err := ms.blobStore.Put(ctx, mt, payload)
 	if err != nil {
 		dcontext.GetLogger(ctx).Errorf("error putting payload into blobstore: %v", err)
+		return "", err
+	}
+
+	err = ms.indexReferrers(ctx, m, revision.Digest)
+	if err != nil {
+		dcontext.GetLogger(ctx).Errorf("error indexing referrers: %v", err)
 		return "", err
 	}
 
@@ -109,7 +119,7 @@ func (ms *ocischemaManifestHandler) verifyManifest(ctx context.Context, mnfst oc
 				}
 			}
 
-		case v1.MediaTypeImageManifest:
+		case v1.MediaTypeImageManifest, v1.MediaTypeArtifactManifest, v1.MediaTypeImageIndex, schema2.MediaTypeManifest, manifestlist.MediaTypeManifestList:
 			var exists bool
 			exists, err = manifestService.Exists(ctx, descriptor.Digest)
 			if err != nil || !exists {
@@ -140,4 +150,17 @@ func (ms *ocischemaManifestHandler) verifyManifest(ctx context.Context, mnfst oc
 	}
 
 	return nil
+}
+
+// indexReferrers indexes the subject of the given revision in its referrers index store.
+func (ms *ocischemaManifestHandler) indexReferrers(ctx context.Context, dm *ocischema.DeserializedManifest, revision digest.Digest) error {
+	if dm.Subject == nil {
+		return nil
+	}
+
+	// [TODO] We can use artifact type in the link path to support filtering by artifact type
+	//  but need to consider the max path length in different os
+	subjectRevision := dm.Subject.Digest
+
+	return indexWithSubject(ctx, ms.repository.Named().Name(), revision, subjectRevision, ms.storageDriver)
 }

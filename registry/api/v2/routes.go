@@ -1,6 +1,10 @@
 package v2
 
-import "github.com/gorilla/mux"
+import (
+	"sync"
+
+	"github.com/gorilla/mux"
+)
 
 // The following are definitions of the name under which all V2 routes are
 // registered. These symbols can be used to look up a route based on the name.
@@ -12,13 +16,22 @@ const (
 	RouteNameBlobUpload      = "blob-upload"
 	RouteNameBlobUploadChunk = "blob-upload-chunk"
 	RouteNameCatalog         = "catalog"
+	RouteNameReferrers       = "referrers"
+)
+
+var (
+	baseRouter           *mux.Router
+	createBaseRouterOnce sync.Once
 )
 
 // Router builds a gorilla router with named routes for the various API
 // methods. This can be used directly by both server implementations and
 // clients.
 func Router() *mux.Router {
-	return RouterWithPrefix("")
+	createBaseRouterOnce.Do(func() {
+		baseRouter = RouterWithPrefix("")
+	})
+	return baseRouter
 }
 
 // RouterWithPrefix builds a gorilla router with a configured prefix

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"reflect"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
+	"github.com/distribution/distribution/v3/manifest/ociartifact"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/reference"
@@ -59,7 +61,7 @@ func TestManifestStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testManifestStorage(t, true, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect, Schema1SigningKey(k), EnableSchema1)
+	testManifestStorage(t, true, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize)), EnableDelete, EnableRedirect, Schema1SigningKey(k), EnableSchema1)
 }
 
 func TestManifestStorageV1Unsupported(t *testing.T) {
@@ -67,7 +69,7 @@ func TestManifestStorageV1Unsupported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testManifestStorage(t, false, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableDelete, EnableRedirect, Schema1SigningKey(k))
+	testManifestStorage(t, false, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize)), EnableDelete, EnableRedirect, Schema1SigningKey(k))
 }
 
 func testManifestStorage(t *testing.T, schema1Enabled bool, options ...RegistryOption) {
@@ -357,7 +359,7 @@ func testManifestStorage(t *testing.T, schema1Enabled bool, options ...RegistryO
 		t.Errorf("Deleted manifest get returned non-nil")
 	}
 
-	r, err := NewRegistry(ctx, env.driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()), EnableRedirect)
+	r, err := NewRegistry(ctx, env.driver, BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize)), EnableRedirect)
 	if err != nil {
 		t.Fatalf("error creating registry: %v", err)
 	}
@@ -393,7 +395,7 @@ func testOCIManifestStorage(t *testing.T, testname string, includeMediaTypes boo
 
 	repoName, _ := reference.WithName("foo/bar")
 	env := newManifestStoreTestEnv(t, repoName, "thetag",
-		BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider()),
+		BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize)),
 		EnableDelete, EnableRedirect)
 
 	ctx := context.Background()
@@ -405,7 +407,7 @@ func testOCIManifestStorage(t *testing.T, testname string, includeMediaTypes boo
 	// Build a manifest and store it and its layers in the registry
 
 	blobStore := env.repository.Blobs(ctx)
-	builder := ocischema.NewManifestBuilder(blobStore, []byte{}, map[string]string{})
+	builder := ocischema.NewManifestBuilder(blobStore, []byte{}, nil, map[string]string{})
 	err = builder.(*ocischema.Builder).SetMediaType(imageMediaType)
 	if err != nil {
 		t.Fatal(err)
@@ -541,6 +543,85 @@ func testOCIManifestStorage(t *testing.T, testname string, includeMediaTypes boo
 		t.Fatalf("%s: unexpected MediaType for index payload, %s", testname, payloadMediaType)
 	}
 
+}
+
+func TestOCIArtifactManifestStorage(t *testing.T) {
+	repoName, _ := reference.WithName("foo/woo/loo/koo")
+	env := newManifestStoreTestEnv(t, repoName, "ociartifact",
+		BlobDescriptorCacheProvider(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize)),
+		EnableDelete, EnableRedirect)
+
+	ctx := context.Background()
+	ms, err := env.repository.Manifests(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bs := env.repository.Blobs(ctx)
+
+	// create and push the blob and subject manifests into the storage first
+	blob, _ := json.Marshal(ociartifact.Manifest{
+		MediaType:    v1.MediaTypeArtifactManifest,
+		ArtifactType: "test/blob",
+	})
+	blobDesc, err := bs.Put(ctx, v1.MediaTypeArtifactManifest, blob) // push blob manifest into the storage
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subjectAM := ociartifact.Manifest{
+		MediaType:    v1.MediaTypeArtifactManifest,
+		ArtifactType: "test/subject",
+	}
+	subject, err := ociartifact.FromStruct(subjectAM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjectDigest, err := ms.Put(ctx, subject) // push subject manifest into the storage
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the main artifact manifest that has the blob and subject as references
+	am := ociartifact.Manifest{
+		MediaType:    v1.MediaTypeArtifactManifest,
+		ArtifactType: "test/main",
+		Blobs:        []distribution.Descriptor{blobDesc},
+		Subject:      &distribution.Descriptor{MediaType: v1.MediaTypeArtifactManifest, Digest: subjectDigest},
+	}
+	manifest, err := ociartifact.FromStruct(am)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var manifestDigest digest.Digest
+	if manifestDigest, err = ms.Put(ctx, manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now check that we can retrieve the manifest
+	fromStore, err := ms.Get(ctx, manifestDigest)
+	if err != nil {
+		t.Fatalf("unexpected error fetching manifest: %v", err)
+	}
+
+	fetchedManifest, ok := fromStore.(*ociartifact.DeserializedManifest)
+	if !ok {
+		t.Fatalf("unexpected type for fetched manifest")
+	}
+
+	if fetchedManifest.MediaType != v1.MediaTypeArtifactManifest {
+		t.Fatalf("unexpected MediaType for result, %s", fetchedManifest.MediaType)
+	}
+
+	payloadMediaType, _, err := fromStore.Payload()
+	if err != nil {
+		t.Fatalf("error getting payload %v", err)
+	}
+
+	if payloadMediaType != v1.MediaTypeArtifactManifest {
+		t.Fatalf("unexpected MediaType for manifest payload, %s", payloadMediaType)
+	}
 }
 
 // TestLinkPathFuncs ensures that the link path functions behavior are locked
