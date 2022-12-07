@@ -56,9 +56,10 @@ jobs:
         if: ${{ success() }}
         uses: docker/bake-action@v1
         with:
+          flavor: latest=auto
           files: |
             ./docker-bake.hcl
           targets: image-all
           push: true
           set: |
-            image-all.tags=${{ env.REGISTRY }}/${{ env.REPOSITORY }}:wow","${{ env.REGISTRY }}/${{ env.REPOSITORY }}:latest
+            image-all.tags=${{ env.REGISTRY }}/${{ env.REPOSITORY }}:wow
