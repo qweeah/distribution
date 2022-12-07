@@ -62,5 +62,4 @@ jobs:
           platforms: ${{ steps.setup_buildx.platforms }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ steps.get_image_tag.outputs.docker_tag }}
             ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:latest
