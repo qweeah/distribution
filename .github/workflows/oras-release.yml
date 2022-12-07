@@ -61,4 +61,4 @@ jobs:
           targets: image-all
           push: true
           set: |
-            tags=${{ env.REGISTRY }}/${{ env.REPOSITORY }}:wow, ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:latest
+            image-all.tags=${{ env.REGISTRY }}/${{ env.REPOSITORY }}:wow, ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:latest
