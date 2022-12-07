@@ -2,9 +2,10 @@ name: Release oras-project/registry container image
 
 on:
   push:
+    branches:
+      - test
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
-      - test
 
 jobs:
   publish:
