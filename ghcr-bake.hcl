@@ -4,7 +4,7 @@ group "default" {
 
 // Special target: https://github.com/docker/metadata-action#bake-definition
 target "docker-metadata-action" {
-  tags = ["registry:latest"]
+  tags = ["ghcr.io/oras-project/registry:latest"]
 }
 
 target "image" {
