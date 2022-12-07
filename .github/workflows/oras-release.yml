@@ -57,6 +57,8 @@ jobs:
         uses: docker/bake-action@v1
         with:
           files: |
-            ./ghcr-bake.hcl
-          targets: image-multi-arch
+            ./docker-bake.hcl
+          targets: image-all
           push: true
+          set: |
+            target.tags=${{ env.REGISTRY }}/${{ env.REPOSITORY }}:wow, ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:latest
