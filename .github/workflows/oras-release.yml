@@ -58,6 +58,8 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
+          builder: ${{ steps.setup_buildx.name }}
+          build-args: BUILDKIT_MULTI_PLATFORM:=1
           file: ./Dockerfile
           platforms: ${{ steps.setup_buildx.platforms }}
           push: true
