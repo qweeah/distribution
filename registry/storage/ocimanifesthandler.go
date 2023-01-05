@@ -88,6 +88,24 @@ func (ms *ocischemaManifestHandler) verifyManifest(ctx context.Context, mnfst oc
 		return err
 	}
 
+	// For subject, we need to verify that:
+	// First, its digest is valid. Second, it is a manifest.
+	// No need to check its existence.
+	if mnfst.Subject != nil {
+		// check if the digest is valid
+		err := mnfst.Subject.Digest.Validate()
+		if err != nil {
+			errs = append(errs, err, distribution.ErrManifestBlobUnknown{Digest: mnfst.Subject.Digest})
+		}
+		// check the media type of subject
+		switch mnfst.Subject.MediaType {
+		case v1.MediaTypeImageManifest, v1.MediaTypeArtifactManifest, v1.MediaTypeImageIndex, schema2.MediaTypeManifest, manifestlist.MediaTypeManifestList:
+			// no operations for known manifest media types
+		default:
+			errs = append(errs, distribution.ErrInvalidSubjectMediaType)
+		}
+	}
+
 	blobsService := ms.repository.Blobs(ctx)
 
 	for _, descriptor := range mnfst.References() {
