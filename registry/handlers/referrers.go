@@ -76,6 +76,10 @@ func (h *referrersHandler) GetReferrers(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if referrers == nil {
+		referrers = []v1.Descriptor{}
+	}
+
 	response := v1.Index{
 		Versioned:   specs.Versioned{SchemaVersion: 2},
 		MediaType:   v1.MediaTypeImageIndex,
