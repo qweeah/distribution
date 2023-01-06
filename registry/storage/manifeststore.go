@@ -154,7 +154,42 @@ func (ms *manifestStore) Put(ctx context.Context, manifest distribution.Manifest
 // Delete removes the revision of the specified manifest.
 func (ms *manifestStore) Delete(ctx context.Context, dgst digest.Digest) error {
 	dcontext.GetLogger(ms.ctx).Debug("(*manifestStore).Delete")
-	return ms.blobStore.Delete(ctx, dgst)
+
+	if !ms.blobStore.deleteEnabled {
+		return distribution.ErrUnsupported
+	}
+
+	// Ensure the blob is available for deletion
+	_, err := ms.blobStore.Stat(ctx, dgst)
+	if err != nil {
+		return err
+	}
+
+	// Remove the manifest from its subject's indexed referrers, if applicable
+	man, err := ms.Get(ctx, dgst)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve manifest: %w", err)
+	}
+
+	var subject *distribution.Descriptor
+	switch m := man.(type) {
+	case *ociartifact.DeserializedManifest:
+		subject = m.Subject
+	case *ocischema.DeserializedManifest:
+		subject = m.Subject
+	}
+
+	if subject != nil {
+		referrersLinkPath, err := pathFor(referrersLinkPathSpec{name: ms.repository.Named().Name(), revision: dgst, subjectRevision: subject.Digest})
+		if err != nil {
+			return fmt.Errorf("failed to generate referrers link path for %v", dgst)
+		}
+		if err = ms.repository.driver.Delete(ctx, referrersLinkPath); err != nil {
+			return err
+		}
+	}
+
+	return ms.blobStore.blobAccessController.Clear(ctx, dgst)
 }
 
 func (ms *manifestStore) Enumerate(ctx context.Context, ingester func(digest.Digest) error) error {
